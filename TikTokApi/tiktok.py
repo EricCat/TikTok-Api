@@ -186,11 +186,15 @@ class TikTokApi:
             raise Exception("Please use 'custom_device_id' instead of 'custom_did'")
         self._custom_device_id = kwargs.get("custom_device_id", None)
         self._user_agent = "5.0 (iPhone; CPU iPhone OS 14_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1"  # TODO: Randomly generate agents
+        self._user_agent_pc = "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/536.5 (KHTML, like Gecko) Chrome/19.0.1084.52 Safari/536.5"
         self._proxy = kwargs.get("proxy", None)
         self._custom_verify_fp = kwargs.get("custom_verify_fp")
         self._signer_url = kwargs.get("external_signer", None)
         self._request_delay = kwargs.get("request_delay", None)
         self._requests_extra_kwargs = kwargs.get("requests_extra_kwargs", {})
+
+        self._default_ms_token = "rRddiJp8iQ-SKPzgSdSpiv2kE-bG2gl8Hodzgf-0Nc9al89xSjXXOeLbUEmQv4NgiThfHm--B8yN-Y6wlV4aL4mt4Qx7rdkf-C8dJKdxd1mbmDY2H6Bknc0hPOjmnpQpx5uw6vI1ZAukwUan"
+        self._default_verifyFp = "verify_l9ql674l_H1vwgpNw_fniD_4vXL_8NWc_O0mraTy7tGDx"
 
         if kwargs.get("use_test_endpoints", False):
             global BASE_URL
@@ -247,7 +251,7 @@ class TikTokApi:
             if self._custom_verify_fp != None:
                 verifyFp = self._custom_verify_fp
             else:
-                verifyFp = "verify_khr3jabg_V7ucdslq_Vrw9_4KPb_AJ1b_Ks706M8zIJTq"
+                verifyFp = self._default_verifyFp
         else:
             verifyFp = kwargs.get("custom_verify_fp")
 
@@ -308,7 +312,7 @@ class TikTokApi:
             kwargs["csrf_session_id"] = csrf_session_id
 
         headers = {
-            "authority": "m.tiktok.com",
+            "authority": f"{subdomain}.tiktok.com",
             "method": "GET",
             "path": url.split("tiktok.com")[1],
             "scheme": "https",
@@ -485,6 +489,7 @@ class TikTokApi:
                 ),
                 "s_v_web_id": verifyFp,
                 "ttwid": kwargs.get("ttwid"),
+                "msToken": kwargs.get("msToken", self._default_ms_token),
             }
         else:
             return {
@@ -496,6 +501,7 @@ class TikTokApi:
                     for i in range(16)
                 ),
                 "ttwid": kwargs.get("ttwid"),
+                "msToken": kwargs.get("msToken", self._default_ms_token),
             }
 
     def get_bytes(self, **kwargs) -> bytes:

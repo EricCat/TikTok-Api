@@ -80,7 +80,8 @@ class Search:
         spawn = requests.head(
             "https://www.tiktok.com",
             proxies=Search.parent._format_proxy(processed.proxy),
-            **Search.parent._requests_extra_kwargs
+            **Search.parent._requests_extra_kwargs,
+            headers={'User-Agent': Search.parent._user_agent_pc}
         )
         ttwid = spawn.cookies["ttwid"]
 

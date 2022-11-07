@@ -84,6 +84,13 @@ class User:
             raise TypeError(
                 "You must provide the username when creating this class to use this method."
             )
+        # Fetch cookies
+        spawn = requests.head(
+                "https://www.tiktok.com",
+                proxies=User.parent._format_proxy(kwargs.get("proxy", None)),
+                **User.parent._requests_extra_kwargs,
+                headers={'User-Agent': User.parent._user_agent_pc}
+        )
 
         quoted_username = quote(self.username)
         r = requests.get(
@@ -93,43 +100,42 @@ class User:
                 "path": "/@{}".format(quoted_username),
                 "Accept-Encoding": "gzip, deflate",
                 "Connection": "keep-alive",
-                "User-Agent": self.parent._user_agent,
+                "User-Agent": User.parent._user_agent,
             },
             proxies=User.parent._format_proxy(kwargs.get("proxy", None)),
-            cookies=User.parent._get_cookies(**kwargs),
+            cookies=spawn.cookies,
             **User.parent._requests_extra_kwargs,
         )
+        try:
+            data = extract_tag_contents(r.text)
+            user = json.loads(data)
 
-        data = extract_tag_contents(r.text)
-        user = json.loads(data)
+            user_props = user["props"]["pageProps"]
+            if user_props["statusCode"] == 404:
+                raise NotFoundException(
+                    "TikTok user with username {} does not exist".format(self.username)
+                )
 
-        user_props = user["props"]["pageProps"]
-        if user_props["statusCode"] == 404:
-            raise NotFoundException(
-                "TikTok user with username {} does not exist".format(self.username)
+            return user_props["userInfo"]
+        except CaptchaException as ex:
+            # There is a route for user info, but uses msToken
+            processed = User.parent._process_kwargs(kwargs)
+            kwargs["custom_device_id"] = processed.device_id
+
+            query = {
+                "uniqueId": self.user_id,
+                "secUid": "",
+                "msToken": User.parent._get_cookies()["msToken"]
+            }
+
+            path = "api/user/detail/?{}&{}".format(
+                User.parent._add_url_params(), urlencode(query)
             )
 
-        return user_props["userInfo"]
+            res = User.parent.get_data(path, subdomain="m", **kwargs)
+            # print(res)
 
-        """
-        TODO: There is a route for user info, but uses msToken :\
-        processed = self.parent._process_kwargs(kwargs)
-        kwargs["custom_device_id"] = processed.device_id
-
-        query = {
-            "uniqueId": "therock",
-            "secUid": "",
-            "msToken": User.parent._get_cookies()["msToken"]
-        }
-
-        path = "api/user/detail/?{}&{}".format(
-            User.parent._add_url_params(), urlencode(query)
-        )
-
-        res = User.parent.get_data(path, subdomain="m", **kwargs)
-        print(res)
-
-        return res["userInfo"]"""
+            return res["userInfo"]
 
     def videos(self, count=30, cursor=0, **kwargs) -> Iterator[Video]:
         """
