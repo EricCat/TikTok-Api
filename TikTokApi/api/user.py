@@ -137,13 +137,15 @@ class User:
 
             return res["userInfo"]
 
-    def videos(self, count=30, cursor=0, **kwargs) -> Iterator[Video]:
+    def videos(self, count: int = 30, cursor: int = 0,
+               get_all: bool = False, **kwargs) -> Iterator[Video]:
         """
         Returns an iterator yielding Video objects.
 
         - Parameters:
             - count (int): The amount of videos you want returned.
             - cursor (int): The unix epoch to get uploaded videos since.
+            - get_all (bool): Retrieve all videos
 
         Example Usage
         ```py
@@ -161,7 +163,7 @@ class User:
         first = True
         amount_yielded = 0
 
-        while amount_yielded < count:
+        while get_all or amount_yielded < count:
             query = {
                 "count": 30,
                 "id": self.user_id,
@@ -194,7 +196,8 @@ class User:
             cursor = res["cursor"]
             first = False
 
-    def liked(self, count: int = 30, cursor: int = 0, **kwargs) -> Iterator[Video]:
+    def liked(self, count: int = 30, cursor: int = 0,
+              get_all: bool = False, **kwargs) -> Iterator[Video]:
         """
         Returns a dictionary listing TikToks that a given a user has liked.
 
@@ -203,6 +206,7 @@ class User:
         - Parameters:
             - count (int): The amount of videos you want returned.
             - cursor (int): The unix epoch to get uploaded videos since.
+            - get_all (bool): Retrieve all liked
 
         Example Usage
         ```py
@@ -219,7 +223,7 @@ class User:
         if self.user_id is None and self.sec_uid is None:
             self.__find_attributes()
 
-        while amount_yielded < count:
+        while get_all or amount_yielded < count:
             query = {
                 "count": 30,
                 "id": self.user_id,
