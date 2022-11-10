@@ -194,10 +194,9 @@ class browser(BrowserInterface):
         if kwargs.get("gen_new_verifyFp", False):
             verifyFp = self.gen_verifyFp()
         else:
-            verifyFp = kwargs.get(
-                "custom_verify_fp",
-                "verify_khgp4f49_V12d4mRX_MdCO_4Wzt_Ar0k_z4RCQC9pUDpX",
-            )
+            verifyFp = kwargs.get("custom_verify_fp", verifyFp,)
+
+        msToken = kwargs.get("ms_token", "5bbuO45TT6B3MQ9P50Kj5eo3nNFePwDe-Zl_BOcuYusIDzuUgAZC1GzX4P_PWwGyZUd2FtMzUDyRIe0mcqXD_4HjaR9vdR4kXW5nQ8ByLo40GvtRL2KszbsN5NOF_hBdZako4fKcZv_QIO7-5wM=")
 
         if kwargs.get("custom_device_id") is not None:
             device_id = kwargs.get("custom_device_id", None)
@@ -206,7 +205,7 @@ class browser(BrowserInterface):
         else:
             device_id = self.device_id
 
-        url = "{}&verifyFp={}&device_id={}".format(url, verifyFp, device_id)
+        url = "{}&verifyFp={}&device_id={}&msToken={}".format(url, verifyFp, device_id, msToken)
 
         await page.add_script_tag(content=_get_acrawler())
         evaluatedPage = await page.evaluate(
@@ -235,7 +234,7 @@ class browser(BrowserInterface):
             )
 
         await context.close()
-        return (verifyFp, device_id, evaluatedPage, tt_params)
+        return (verifyFp, device_id, msToken, evaluatedPage, tt_params)
 
     async def _clean_up(self):
         await self.browser.close()

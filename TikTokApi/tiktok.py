@@ -90,6 +90,7 @@ class TikTokApi:
             custom_device_id: Optional[str] = None,
             generate_static_device_id: Optional[bool] = False,
             custom_verify_fp: Optional[str] = None,
+            ms_token: Optional[str] = None,
             use_test_endpoints: Optional[bool] = False,
             proxy: Optional[str] = None,
             executable_path: Optional[str] = None,
@@ -128,6 +129,11 @@ class TikTokApi:
             You can use the following to generate `"".join(random.choice(string.digits)
             for num in range(19))`
 
+        * ms_token: A TikTok parameter needed to work most of the time, optional
+            All the methods take this as a optional parameter, however it's cleaner code
+            to store this at the instance level. You can override this at the specific
+            methods.
+
         * use_test_endpoints: Send requests to TikTok's test endpoints, optional
             This parameter when set to true will make requests to TikTok's testing
             endpoints instead of the live site. I can't guarantee this will work
@@ -161,6 +167,7 @@ class TikTokApi:
                 custom_device_id=custom_device_id,
                 generate_static_device_id=generate_static_device_id,
                 custom_verify_fp=custom_verify_fp,
+                ms_token=ms_token,
                 use_test_endpoints=use_test_endpoints,
                 proxy=proxy,
                 executable_path=executable_path,
@@ -189,11 +196,12 @@ class TikTokApi:
         self._user_agent_pc = "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/536.5 (KHTML, like Gecko) Chrome/19.0.1084.52 Safari/536.5"
         self._proxy = kwargs.get("proxy", None)
         self._custom_verify_fp = kwargs.get("custom_verify_fp")
+        self._ms_token = kwargs.get("ms_token")
         self._signer_url = kwargs.get("external_signer", None)
         self._request_delay = kwargs.get("request_delay", None)
         self._requests_extra_kwargs = kwargs.get("requests_extra_kwargs", {})
 
-        self._default_ms_token = "rRddiJp8iQ-SKPzgSdSpiv2kE-bG2gl8Hodzgf-0Nc9al89xSjXXOeLbUEmQv4NgiThfHm--B8yN-Y6wlV4aL4mt4Qx7rdkf-C8dJKdxd1mbmDY2H6Bknc0hPOjmnpQpx5uw6vI1ZAukwUan"
+        self._default_ms_token = "zeKJo6iucFiMvbscBo_w-4NMbuljK2u22uf5AgTNdeY85HGODm-QMx5J87Xhwd8bHSXMOZoKpufVijsEoiC21pzUuiM7PGo6cS0isipRE21d9ocsso03lVfTEv4xFYwOxwB8rkjcSEe-sfRKoA=="
         self._default_verifyFp = "verify_l9ql674l_H1vwgpNw_fniD_4vXL_8NWc_O0mraTy7tGDx"
 
         if kwargs.get("use_test_endpoints", False):
@@ -247,6 +255,14 @@ class TikTokApi:
         if self._proxy is not None:
             proxy = self._proxy
 
+        if kwargs.get("ms_token") == None:
+            if self._ms_token != None:
+                msToken = self._ms_token
+            else:
+                msToken = self._default_ms_token
+        else:
+            msToken = kwargs.get("ms_token")
+
         if kwargs.get("custom_verify_fp") == None:
             if self._custom_verify_fp != None:
                 verifyFp = self._custom_verify_fp
@@ -262,9 +278,11 @@ class TikTokApi:
 
         if self._signer_url is None:
             kwargs["custom_verify_fp"] = verifyFp
+            kwargs['ms_token'] = msToken
             (
                 verify_fp,
                 device_id,
+                ms_token,
                 signature,
                 tt_params,
             ) = asyncio.get_event_loop().run_until_complete(
@@ -283,6 +301,7 @@ class TikTokApi:
             (
                 verify_fp,
                 device_id,
+                ms_token,
                 signature,
                 user_agent,
                 referrer,
@@ -290,12 +309,13 @@ class TikTokApi:
                 full_url,
                 custom_device_id=kwargs.get("custom_device_id"),
                 verifyFp=kwargs.get("custom_verify_fp", verifyFp),
+                msToken=kwargs.get("ms_token", msToken),
             )
 
         if not kwargs.get("send_tt_params", False):
             tt_params = None
 
-        query = {"verifyFp": verify_fp, "device_id": device_id, "_signature": signature}
+        query = {"verifyFp": verify_fp, "device_id": device_id, "msToken": ms_token, "_signature": signature}
         url = "{}&{}".format(full_url, urlencode(query))
 
         h = requests.head(
@@ -425,7 +445,7 @@ class TikTokApi:
             self.shutdown()
         return
 
-    def external_signer(self, url, custom_device_id=None, verifyFp=None):
+    def external_signer(self, url, custom_device_id=None, verifyFp=None, msToken=None):
         """Makes requests to an external signer instead of using a browser.
 
         ##### Parameters
@@ -441,15 +461,21 @@ class TikTokApi:
         * custom_verify_fp: A TikTok parameter needed to work most of the time,
             To get this parameter look at [this video](https://youtu.be/zwLmLfVI-VQ?t=117)
             I recommend watching the entire thing, as it will help setup this package.
+
+        * msToken: A TikTok parameter needed to download videos
+            The code generates these and handles these pretty well itself, however
+            for some things such as video download you will need to set a consistent
+            one of these.
         """
         if custom_device_id is not None:
             query = {
                 "url": url,
                 "custom_device_id": custom_device_id,
                 "verifyFp": verifyFp,
+                "msToken": msToken
             }
         else:
-            query = {"url": url, "verifyFp": verifyFp}
+            query = {"url": url, "verifyFp": verifyFp, "msToken": msToken}
         data = requests.get(
             self._signer_url + "?{}".format(urlencode(query)),
             **self._requests_extra_kwargs,
@@ -459,6 +485,7 @@ class TikTokApi:
         return (
             parsed_data["verifyFp"],
             parsed_data["device_id"],
+            parsed_data["msToken"],
             parsed_data["_signature"],
             parsed_data["user_agent"],
             parsed_data["referrer"],
@@ -478,6 +505,14 @@ class TikTokApi:
         else:
             verifyFp = kwargs.get("custom_verify_fp")
 
+        if kwargs.get("ms_token") is None:
+            if self._ms_token is not None:
+                msToken = self._ms_token
+            else:
+                msToken = None
+        else:
+            msToken = kwargs.get("ms_token")
+
         if kwargs.get("force_verify_fp_on_cookie_header", False):
             return {
                 "tt_webid": device_id,
@@ -488,8 +523,9 @@ class TikTokApi:
                     for i in range(16)
                 ),
                 "s_v_web_id": verifyFp,
+                "msToken": kwargs.get("msToken", msToken),
                 "ttwid": kwargs.get("ttwid"),
-                "msToken": kwargs.get("msToken", self._default_ms_token),
+
             }
         else:
             return {
@@ -501,7 +537,6 @@ class TikTokApi:
                     for i in range(16)
                 ),
                 "ttwid": kwargs.get("ttwid"),
-                "msToken": kwargs.get("msToken", self._default_ms_token),
             }
 
     def get_bytes(self, **kwargs) -> bytes:
@@ -512,6 +547,7 @@ class TikTokApi:
             (
                 verify_fp,
                 device_id,
+                ms_token,
                 signature,
                 _,
             ) = asyncio.get_event_loop().run_until_complete(
@@ -525,13 +561,14 @@ class TikTokApi:
             (
                 verify_fp,
                 device_id,
+                ms_token,
                 signature,
                 user_agent,
                 referrer,
             ) = self.external_signer(
                 kwargs["url"], custom_device_id=kwargs.get("custom_device_id", None)
             )
-        query = {"verifyFp": verify_fp, "_signature": signature}
+        query = {"verifyFp": verify_fp, "msToken": ms_token, "_signature": signature}
         url = "{}&{}".format(kwargs["url"], urlencode(query))
         r = requests.get(
             url,
