@@ -536,6 +536,7 @@ class TikTokApi:
                     random.choice(string.ascii_uppercase + string.ascii_lowercase)
                     for i in range(16)
                 ),
+                "msToken": kwargs.get("msToken", msToken),
                 "ttwid": kwargs.get("ttwid"),
             }
 
