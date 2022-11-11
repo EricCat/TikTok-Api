@@ -509,7 +509,7 @@ class TikTokApi:
             if self._ms_token is not None:
                 msToken = self._ms_token
             else:
-                msToken = None
+                msToken = self._default_ms_token
         else:
             msToken = kwargs.get("ms_token")
 
