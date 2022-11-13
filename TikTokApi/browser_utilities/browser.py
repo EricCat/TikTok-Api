@@ -59,7 +59,7 @@ class browser(BrowserInterface):
                 address = self.proxy.split("@")[1]
                 self.options["proxy"] = {
                     "server": server_prefix + "://" + address,
-                    "username": self.proxy.split("://")[1].split(":")[0],
+                    "username": self.proxy.split("://")[1].split("@")[0].split(":")[0],
                     "password": self.proxy.split("://")[1].split("@")[0].split(":")[1],
                 }
             else:
