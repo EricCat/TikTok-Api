@@ -130,10 +130,10 @@ class browserHTML(BrowserInterface):
         context = await self._create_context()
         page = await context.new_page()
 
-        page.goto(url, wait_until='load')
+        await page.goto(url, wait_until='load')
         # Find Discover part on the left side
-        page.wait_for_selector("p[data-e2e=nav-discover-title]")
-        page_html = page.content()
+        await page.wait_for_selector("p[data-e2e=nav-discover-title]")
+        page_html = await page.content()
 
         await context.close()
         return page_html
