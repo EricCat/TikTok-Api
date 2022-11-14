@@ -19,7 +19,8 @@ from .api.sound import Sound
 from .api.trending import Trending
 from .api.user import User
 from .api.video import Video
-from .browser_utilities.browser import browser
+from .browser_utilities.browser import browser as api_browser
+from .browser_utilities.browser_html import browserHTML as html_browser
 from .exceptions import *
 from .utilities import LOGGER_NAME
 
@@ -196,13 +197,16 @@ class TikTokApi:
         self._user_agent_pc = "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/536.5 (KHTML, like Gecko) Chrome/19.0.1084.52 Safari/536.5"
         self._proxy = kwargs.get("proxy", None)
         self._custom_verify_fp = kwargs.get("custom_verify_fp")
-        self._ms_token = kwargs.get("ms_token")
         self._signer_url = kwargs.get("external_signer", None)
         self._request_delay = kwargs.get("request_delay", None)
         self._requests_extra_kwargs = kwargs.get("requests_extra_kwargs", {})
 
-        self._default_ms_token = "zeKJo6iucFiMvbscBo_w-4NMbuljK2u22uf5AgTNdeY85HGODm-QMx5J87Xhwd8bHSXMOZoKpufVijsEoiC21pzUuiM7PGo6cS0isipRE21d9ocsso03lVfTEv4xFYwOxwB8rkjcSEe-sfRKoA=="
         self._default_verifyFp = "verify_l9ql674l_H1vwgpNw_fniD_4vXL_8NWc_O0mraTy7tGDx"
+        self._ms_token = kwargs.get("ms_token")
+        self._ttw_id = kwargs.get("ttwid")
+        self._tt_csrf_token = "".join(
+                random.choice(string.ascii_uppercase + string.ascii_lowercase) for i in range(16))
+        self._csrf_session_id = kwargs.get("csrf_session_id")  # TODO:generate csrf_session_id if it's None
 
         if kwargs.get("use_test_endpoints", False):
             global BASE_URL
@@ -215,10 +219,40 @@ class TikTokApi:
 
         if self._signer_url is None:
             self._browser = asyncio.get_event_loop().run_until_complete(
-                asyncio.gather(browser.create(**kwargs))
+                asyncio.gather(api_browser.create(**kwargs))
             )[0]
 
             self._user_agent = self._browser.user_agent
+
+        self._browser_html = asyncio.get_event_loop().run_until_complete(
+                asyncio.gather(html_browser.create(**kwargs)))[0]
+        try:
+            _cookies = self._browser_html.cookies
+            if _cookies != None:
+                try:
+                    self._ms_token = _cookies["msToken"]
+                except (IndexError, ValueError):
+                    self._ms_token = kwargs.get("ms_token")
+
+                try:
+                    self._ttw_id = _cookies["ttwid"]
+                except (IndexError, ValueError):
+                    self._ttw_id = kwargs.get("ttwid")
+
+                try:
+                    self._tt_csrf_token = _cookies["tt_csrf_token"]
+                except (IndexError, ValueError):
+                    self._tt_csrf_token = kwargs.get("tt_csrf_token")
+
+                try:
+                    self._csrf_session_id = _cookies["csrf_session_id"]
+                except (IndexError, ValueError):
+                    self._csrf_session_id = kwargs.get("csrf_session_id")
+
+        except Exception as e:
+            self.logger.exception(
+                "An error occurred while fetching cookies from browser, but it was ignored",
+            )
 
         try:
             self._timezone_name = self._browser.timezone_name
@@ -255,14 +289,6 @@ class TikTokApi:
         if self._proxy is not None:
             proxy = self._proxy
 
-        if kwargs.get("ms_token") == None:
-            if self._ms_token != None:
-                msToken = self._ms_token
-            else:
-                msToken = self._default_ms_token
-        else:
-            msToken = kwargs.get("ms_token")
-
         if kwargs.get("custom_verify_fp") == None:
             if self._custom_verify_fp != None:
                 verifyFp = self._custom_verify_fp
@@ -278,11 +304,11 @@ class TikTokApi:
 
         if self._signer_url is None:
             kwargs["custom_verify_fp"] = verifyFp
-            kwargs['ms_token'] = msToken
+            kwargs['msToken'] = self._ms_token
             (
                 verify_fp,
                 device_id,
-                ms_token,
+                msToken,
                 signature,
                 tt_params,
             ) = asyncio.get_event_loop().run_until_complete(
@@ -301,7 +327,7 @@ class TikTokApi:
             (
                 verify_fp,
                 device_id,
-                ms_token,
+                msToken,
                 signature,
                 user_agent,
                 referrer,
@@ -309,13 +335,13 @@ class TikTokApi:
                 full_url,
                 custom_device_id=kwargs.get("custom_device_id"),
                 verifyFp=kwargs.get("custom_verify_fp", verifyFp),
-                msToken=kwargs.get("ms_token", msToken),
+                msToken=self._ms_token,
             )
 
         if not kwargs.get("send_tt_params", False):
             tt_params = None
 
-        query = {"verifyFp": verify_fp, "device_id": device_id, "msToken": ms_token, "_signature": signature}
+        query = {"verifyFp": verify_fp, "device_id": device_id, "msToken": msToken, "_signature": signature}
         url = "{}&{}".format(full_url, urlencode(query))
 
         h = requests.head(
@@ -436,6 +462,14 @@ class TikTokApi:
         )
         return r.json()
 
+    def get_html(self, url, **kwargs) -> str:
+        try:
+            html_resp = asyncio.get_event_loop().run_until_complete(
+                        asyncio.gather(self._browser_html.page_url(url, **kwargs)))[0]
+            return html_resp
+        except Exception as e:
+            raise HTMLNotAvailableException(f"Get HTML data via url: {url} failed. Reason is: {e}")
+
     def __del__(self):
         """A basic cleanup method, called automatically from the code"""
         if not self._is_context_manager:
@@ -493,9 +527,8 @@ class TikTokApi:
 
     def _get_cookies(self, **kwargs):
         """Extracts cookies from the kwargs passed to the function for get_data"""
-        device_id = kwargs.get(
-            "custom_device_id",
-            "".join(random.choice(string.digits) for num in range(19)),
+        device_id = kwargs.get("custom_device_id",
+                               "".join(random.choice(string.digits) for num in range(19)),
         )
         if kwargs.get("custom_verify_fp") is None:
             if self._custom_verify_fp is not None:
@@ -505,39 +538,25 @@ class TikTokApi:
         else:
             verifyFp = kwargs.get("custom_verify_fp")
 
-        if kwargs.get("ms_token") is None:
-            if self._ms_token is not None:
-                msToken = self._ms_token
-            else:
-                msToken = self._default_ms_token
-        else:
-            msToken = kwargs.get("ms_token")
-
         if kwargs.get("force_verify_fp_on_cookie_header", False):
             return {
                 "tt_webid": device_id,
                 "tt_webid_v2": device_id,
-                "csrf_session_id": kwargs.get("csrf_session_id"),
-                "tt_csrf_token": "".join(
-                    random.choice(string.ascii_uppercase + string.ascii_lowercase)
-                    for i in range(16)
-                ),
+                "csrf_session_id": self._csrf_session_id,
+                "tt_csrf_token": self._tt_csrf_token,
                 "s_v_web_id": verifyFp,
-                "msToken": kwargs.get("msToken", msToken),
-                "ttwid": kwargs.get("ttwid"),
+                "msToken": self._ms_token,
+                "ttwid": self._ttw_id,
 
             }
         else:
             return {
                 "tt_webid": device_id,
                 "tt_webid_v2": device_id,
-                "csrf_session_id": kwargs.get("csrf_session_id"),
-                "tt_csrf_token": "".join(
-                    random.choice(string.ascii_uppercase + string.ascii_lowercase)
-                    for i in range(16)
-                ),
-                "msToken": kwargs.get("msToken", msToken),
-                "ttwid": kwargs.get("ttwid"),
+                "csrf_session_id": self._csrf_session_id,
+                "tt_csrf_token": self._tt_csrf_token,
+                "msToken": self._ms_token,
+                "ttwid": self._ttw_id,
             }
 
     def get_bytes(self, **kwargs) -> bytes:
@@ -548,7 +567,7 @@ class TikTokApi:
             (
                 verify_fp,
                 device_id,
-                ms_token,
+                msToken,
                 signature,
                 _,
             ) = asyncio.get_event_loop().run_until_complete(
@@ -562,14 +581,14 @@ class TikTokApi:
             (
                 verify_fp,
                 device_id,
-                ms_token,
+                msToken,
                 signature,
                 user_agent,
                 referrer,
             ) = self.external_signer(
                 kwargs["url"], custom_device_id=kwargs.get("custom_device_id", None)
             )
-        query = {"verifyFp": verify_fp, "msToken": ms_token, "_signature": signature}
+        query = {"verifyFp": verify_fp, "msToken": msToken, "_signature": signature}
         url = "{}&{}".format(kwargs["url"], urlencode(query))
         r = requests.get(
             url,

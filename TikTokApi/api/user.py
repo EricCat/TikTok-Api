@@ -4,9 +4,10 @@ import json
 import requests
 
 from urllib.parse import quote, urlencode
+from parsel import Selector
 
 from ..exceptions import *
-from ..helpers import extract_tag_contents
+from ..helpers import extract_tag_contents, deep_get, parse_url
 
 from typing import TYPE_CHECKING, ClassVar, Iterator, Optional
 
@@ -84,29 +85,60 @@ class User:
             raise TypeError(
                 "You must provide the username when creating this class to use this method."
             )
-        # Fetch cookies
-        spawn = requests.head(
-                "https://www.tiktok.com",
-                proxies=User.parent._format_proxy(kwargs.get("proxy", None)),
-                **User.parent._requests_extra_kwargs,
-                headers={'User-Agent': User.parent._user_agent_pc}
-        )
-
         quoted_username = quote(self.username)
-        r = requests.get(
-            "https://tiktok.com/@{}?lang=en".format(quoted_username),
-            headers={
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
-                "path": "/@{}".format(quoted_username),
-                "Accept-Encoding": "gzip, deflate",
-                "Connection": "keep-alive",
-                "User-Agent": User.parent._user_agent,
-            },
-            proxies=User.parent._format_proxy(kwargs.get("proxy", None)),
-            cookies=spawn.cookies,
-            **User.parent._requests_extra_kwargs,
-        )
         try:
+            page_html = User.parent.get_html("https://www.tiktok.com/@{}?lang=en".format(quoted_username),
+                                             **kwargs)
+
+            sel = Selector(text=page_html)
+            js_json_text = sel.xpath("//script[contains(@id, 'SIGI_STATE')]/text()").extract_first('').strip()
+            json_results = json.loads(js_json_text)
+            try:
+                unique_id = deep_get(json_results, 'UserPage.uniqueId')
+                sec_uid = deep_get(json_results, 'UserPage.secUid')
+
+                user_stats = deep_get(json_results, f'UserModule.stats.{unique_id}')
+                user_info = deep_get(json_results, f'UserModule.users.{unique_id}')
+
+                user_stats = dict(unique_id=unique_id,
+                                  sec_uid=sec_uid,
+                                  user_info=user_info,
+                                  user_stats=user_stats,
+                                  )
+                user_posts = []
+                if kwargs.get("include_video", False):
+                    videos_list = deep_get(json_results, 'ItemModule')
+                    user_posts = [item for _, item in videos_list.items()]
+
+                return dict(user=dict(
+                        stats=user_stats,
+                        posts=user_posts
+                ))
+            except (ValueError, IndexError):
+                return {}
+
+        except HTMLNotAvailableException as ex:
+            # Fetch cookies
+            spawn = requests.head(
+                    "https://www.tiktok.com",
+                    proxies=User.parent._format_proxy(kwargs.get("proxy", None)),
+                    **User.parent._requests_extra_kwargs,
+                    headers={'User-Agent': User.parent._user_agent_pc}
+            )
+
+            r = requests.get(
+                "https://tiktok.com/@{}?lang=en".format(quoted_username),
+                headers={
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+                    "path": "/@{}".format(quoted_username),
+                    "Accept-Encoding": "gzip, deflate",
+                    "Connection": "keep-alive",
+                    "User-Agent": User.parent._user_agent,
+                },
+                proxies=User.parent._format_proxy(kwargs.get("proxy", None)),
+                cookies=spawn.cookies,
+                **User.parent._requests_extra_kwargs,
+            )
             data = extract_tag_contents(r.text)
             user = json.loads(data)
 
@@ -115,7 +147,6 @@ class User:
                 raise NotFoundException(
                     "TikTok user with username {} does not exist".format(self.username)
                 )
-
             return user_props["userInfo"]
         except CaptchaException as ex:
             # There is a route for user info, but uses msToken
@@ -125,7 +156,7 @@ class User:
             query = {
                 "uniqueId": self.user_id,
                 "secUid": "",
-                "msToken": User.parent._get_cookies()["msToken"]
+                # "msToken": User.parent._get_cookies()["msToken"]
             }
 
             path = "api/user/detail/?{}&{}".format(
