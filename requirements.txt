@@ -1,4 +1,10 @@
 requests
+parsel
 playwright
 selenium_stealth
 selenium
+# Another
+pycryptodome==3.15.0
+
+# Test
+pycryptodome-test-vectors==1.0.10
