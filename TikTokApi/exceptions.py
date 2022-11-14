@@ -33,3 +33,7 @@ class InvalidJSONException(TikTokException):
 
 class NotAvailableException(TikTokException):
     """The requested object is not available in this region."""
+
+
+class HTMLNotAvailableException(TikTokException):
+    """The requested object is not available in the html web page."""
