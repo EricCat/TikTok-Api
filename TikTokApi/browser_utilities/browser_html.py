@@ -1,4 +1,5 @@
 import logging
+from operator import itemgetter
 from .browser_interface import BrowserInterface
 import threading
 from ..utilities import LOGGER_NAME
@@ -82,16 +83,16 @@ class browserHTML(BrowserInterface):
     def parsed_cookies(cookies):
         parsed = {}
         if cookies is not None:
-            for item in cookies:
-                if item["name"] == "ttwid":
-                    parsed["ttwid"] = item["value"]
-                if item["name"] == "tt_csrf_token":
-                    parsed["tt_csrf_token"] = item["value"]
-                if item["name"] == "tt_chain_token":
-                    parsed["tt_chain_token"] = item["value"]
-                if item["name"] == "msToken":
-                    parsed["msToken"] = item["value"]
-
+            return dict(map(itemgetter("name", "value"), cookies))
+            # for item in cookies:
+            #     if item["name"] == "ttwid":
+            #         parsed["ttwid"] = item["value"]
+            #     if item["name"] == "tt_csrf_token":
+            #         parsed["tt_csrf_token"] = item["value"]
+            #     if item["name"] == "tt_chain_token":
+            #         parsed["tt_chain_token"] = item["value"]
+            #     if item["name"] == "msToken":
+            #         parsed["msToken"] = item["value"]
         return parsed
 
     async def page_url(self, url, **kwargs):
