@@ -8,7 +8,7 @@ from .exceptions import *
 import re
 import requests
 
-XTTPARAMS_AES_PASSWORD_ENCRYPTION = 'webapp1.0+202106'
+XTTPARAMS_AES_PASSWORD_ENCRYPTION = 'webapp1.0+202106'  # Fetch from webapp-desktop.*.js
 
 def extract_tag_contents(html):
     next_json = re.search(
@@ -93,6 +93,11 @@ def set_url(domain, _dict):
 def get_param_url(_dict):
     return urlencode(_dict)
 
+
+def parse_url(url):
+    if url:
+        return urlparse(url).geturl()
+    return
 
 def encrypt_tt_param_v1(text):
     password = XTTPARAMS_AES_PASSWORD_ENCRYPTION
