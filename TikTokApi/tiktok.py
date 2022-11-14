@@ -95,6 +95,7 @@ class TikTokApi:
             use_test_endpoints: Optional[bool] = False,
             proxy: Optional[str] = None,
             executable_path: Optional[str] = None,
+            html_browser: Optional[bool] = True,
             *args,
             **kwargs,
     ):
@@ -154,6 +155,8 @@ class TikTokApi:
         * executable_path: The location of the driver, optional
             This shouldn't be needed if you're using playwright
 
+        * html_browser: Decide use api browser or html borwser when using using playwright, optional
+
         * **kwargs
             Parameters that are passed on to basically every module and methods
             that interact with this main class. These may or may not be documented
@@ -172,6 +175,7 @@ class TikTokApi:
                 use_test_endpoints=use_test_endpoints,
                 proxy=proxy,
                 executable_path=executable_path,
+                html_browser=html_browser,
                 *args,
                 **kwargs,
             )
@@ -231,22 +235,22 @@ class TikTokApi:
             if _cookies != None:
                 try:
                     self._ms_token = _cookies["msToken"]
-                except (IndexError, ValueError):
+                except (IndexError, ValueError, KeyError):
                     self._ms_token = kwargs.get("ms_token")
 
                 try:
                     self._ttw_id = _cookies["ttwid"]
-                except (IndexError, ValueError):
+                except (IndexError, ValueError, KeyError):
                     self._ttw_id = kwargs.get("ttwid")
 
                 try:
                     self._tt_csrf_token = _cookies["tt_csrf_token"]
-                except (IndexError, ValueError):
+                except (IndexError, ValueError, KeyError):
                     self._tt_csrf_token = kwargs.get("tt_csrf_token")
 
                 try:
                     self._csrf_session_id = _cookies["csrf_session_id"]
-                except (IndexError, ValueError):
+                except (IndexError, ValueError, KeyError):
                     self._csrf_session_id = kwargs.get("csrf_session_id")
 
         except Exception as e:
@@ -465,7 +469,7 @@ class TikTokApi:
     def get_html(self, url, **kwargs) -> str:
         try:
             html_resp = asyncio.get_event_loop().run_until_complete(
-                        asyncio.gather(self._browser_html.page_url(url, **kwargs)))[0]
+                        asyncio.gather(self._browser_html.sign_url(url, calc_tt_params=False, **kwargs)))[0]
             return html_resp
         except Exception as e:
             raise HTMLNotAvailableException(f"Get HTML data via url: {url} failed. Reason is: {e}")
@@ -696,6 +700,8 @@ class TikTokApi:
         with _thread_lock:
             self.logger.debug("Shutting down Playwright")
             asyncio.get_event_loop().run_until_complete(self._browser._clean_up())
+            asyncio.get_event_loop().run_until_complete(self._browser_html._clean_up())
+
 
     def __enter__(self):
         with _thread_lock:

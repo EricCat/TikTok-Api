@@ -5,6 +5,6 @@ selenium_stealth
 selenium
 # Another
 pycryptodome==3.15.0
-
+nest_asyncio==1.5.6
 # Test
 pycryptodome-test-vectors==1.0.10

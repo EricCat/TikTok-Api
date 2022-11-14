@@ -93,9 +93,17 @@ class User:
             sel = Selector(text=page_html)
             js_json_text = sel.xpath("//script[contains(@id, 'SIGI_STATE')]/text()").extract_first('').strip()
             json_results = json.loads(js_json_text)
+
+            # uncomment these lines for debug
+            # file_name = f'{self.username}-tiktok-stats-data.json'
+            # with open(file_name, 'w', encoding='utf-8') as f:
+            #     json.dump(js_json_text, f, ensure_ascii=False, sort_keys=True, indent=4)
+
             try:
                 unique_id = deep_get(json_results, 'UserPage.uniqueId')
                 sec_uid = deep_get(json_results, 'UserPage.secUid')
+                self.user_id = unique_id
+                self.sec_uid = sec_uid
 
                 user_stats = deep_get(json_results, f'UserModule.stats.{unique_id}')
                 user_info = deep_get(json_results, f'UserModule.users.{unique_id}')

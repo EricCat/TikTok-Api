@@ -70,7 +70,8 @@ class browserHTML(BrowserInterface):
         await page.goto(self.url, wait_until='load')
         # Find Discover part on the left side
         await page.wait_for_selector("p[data-e2e=nav-discover-title]")
-        self.cookies = self.parsed_cookies(context.cookies())
+        self.cookies = self.parsed_cookies(await context.cookies())
+        await self.get_params(page)
         await context.close()
 
         return self
@@ -78,6 +79,36 @@ class browserHTML(BrowserInterface):
     async def _create_context(self):
         context = await self.browser.new_context(viewport={"width": 2560, "height": 1440})
         return context
+
+    async def get_params(self, page) -> None:
+        self.browser_language = self.kwargs.get(
+            "browser_language",
+            await page.evaluate("""() => { return navigator.language; }"""),
+        )
+        self.browser_version = await page.evaluate(
+            """() => { return window.navigator.appVersion; }"""
+        )
+
+        if len(self.browser_language.split("-")) == 0:
+            self.region = self.kwargs.get("region", "US")
+            self.language = self.kwargs.get("language", "en")
+        elif len(self.browser_language.split("-")) == 1:
+            self.region = self.kwargs.get("region", "US")
+            self.language = self.browser_language.split("-")[0]
+        else:
+            self.region = self.kwargs.get("region", self.browser_language.split("-")[1])
+            self.language = self.kwargs.get(
+                "language", self.browser_language.split("-")[0]
+            )
+
+        self.timezone_name = self.kwargs.get(
+            "timezone_name",
+            await page.evaluate(
+                """() => { return Intl.DateTimeFormat().resolvedOptions().timeZone; }"""
+            ),
+        )
+        self.width = await page.evaluate("""() => { return screen.width; }""")
+        self.height = await page.evaluate("""() => { return screen.height; }""")
 
     @staticmethod
     def parsed_cookies(cookies):
@@ -95,7 +126,7 @@ class browserHTML(BrowserInterface):
             #         parsed["msToken"] = item["value"]
         return parsed
 
-    async def page_url(self, url, **kwargs):
+    async def sign_url(self, url,  calc_tt_params=False, **kwargs):
         context = await self._create_context()
         page = await context.new_page()
 
@@ -106,3 +137,7 @@ class browserHTML(BrowserInterface):
 
         await context.close()
         return page_html
+
+    async def _clean_up(self):
+        await self.browser.close()
+        await self.playwright.stop()
