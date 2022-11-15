@@ -283,7 +283,7 @@ class browser(BrowserInterface):
         await self.playwright.stop()
 
     def find_redirect(self, url):
-        await self.page.goto(url, {"waitUntil": "load"})
+        self.page.goto(url, {"waitUntil": "load"})
         self.redirect_url = self.page.url
 
     def __format_proxy(self, proxy):
