@@ -19,8 +19,7 @@ from .api.sound import Sound
 from .api.trending import Trending
 from .api.user import User
 from .api.video import Video
-from .browser_utilities.browser import browser as api_browser
-from .browser_utilities.browser_html import browserHTML as html_browser
+from .browser_utilities.browser import browser
 from .exceptions import *
 from .utilities import LOGGER_NAME
 
@@ -93,9 +92,9 @@ class TikTokApi:
             custom_verify_fp: Optional[str] = None,
             ms_token: Optional[str] = None,
             use_test_endpoints: Optional[bool] = False,
+            device_mobile: Optional[bool] = True,
             proxy: Optional[str] = None,
             executable_path: Optional[str] = None,
-            html_browser: Optional[bool] = True,
             *args,
             **kwargs,
     ):
@@ -155,8 +154,6 @@ class TikTokApi:
         * executable_path: The location of the driver, optional
             This shouldn't be needed if you're using playwright
 
-        * html_browser: Decide use api browser or html borwser when using using playwright, optional
-
         * **kwargs
             Parameters that are passed on to basically every module and methods
             that interact with this main class. These may or may not be documented
@@ -173,9 +170,9 @@ class TikTokApi:
                 custom_verify_fp=custom_verify_fp,
                 ms_token=ms_token,
                 use_test_endpoints=use_test_endpoints,
+                device_mobile=device_mobile,
                 proxy=proxy,
                 executable_path=executable_path,
-                html_browser=html_browser,
                 *args,
                 **kwargs,
             )
@@ -223,15 +220,13 @@ class TikTokApi:
 
         if self._signer_url is None:
             self._browser = asyncio.get_event_loop().run_until_complete(
-                asyncio.gather(api_browser.create(**kwargs))
+                asyncio.gather(browser.create(**kwargs))
             )[0]
 
             self._user_agent = self._browser.user_agent
 
-        self._browser_html = asyncio.get_event_loop().run_until_complete(
-                asyncio.gather(html_browser.create(**kwargs)))[0]
         try:
-            _cookies = self._browser_html.cookies
+            _cookies = self._browser.cookies
             if _cookies != None:
                 try:
                     self._ms_token = _cookies["msToken"]
@@ -469,7 +464,7 @@ class TikTokApi:
     def get_html(self, url, **kwargs) -> str:
         try:
             html_resp = asyncio.get_event_loop().run_until_complete(
-                        asyncio.gather(self._browser_html.sign_url(url, calc_tt_params=False, **kwargs)))[0]
+                        asyncio.gather(self._browser.sign_url(url, calc_tt_params=False, **kwargs)))[0]
             return html_resp
         except Exception as e:
             raise HTMLNotAvailableException(f"Get HTML data via url: {url} failed. Reason is: {e}")
@@ -700,8 +695,6 @@ class TikTokApi:
         with _thread_lock:
             self.logger.debug("Shutting down Playwright")
             asyncio.get_event_loop().run_until_complete(self._browser._clean_up())
-            asyncio.get_event_loop().run_until_complete(self._browser_html._clean_up())
-
 
     def __enter__(self):
         with _thread_lock:

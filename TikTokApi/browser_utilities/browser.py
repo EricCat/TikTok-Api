@@ -14,7 +14,8 @@ import threading
 from ..utilities import LOGGER_NAME
 from .get_acrawler import _get_acrawler, _get_tt_params_script
 from playwright.async_api import async_playwright
-import asyncio
+from operator import itemgetter
+
 
 logger = logging.getLogger(LOGGER_NAME)
 
@@ -33,11 +34,14 @@ class browser(BrowserInterface):
         self.debug = kwargs.get("debug", False)
         self.proxy = kwargs.get("proxy", None)
         self.api_url = kwargs.get("api_url", None)
+        self.web_url = kwargs.get("web_url", "https://www.tiktok.com/@disneys_2")
         self.referrer = kwargs.get("referer", "https://www.tiktok.com/")
         self.language = kwargs.get("language", "en")
         self.executable_path = kwargs.get("executable_path", None)
         self.device_id = kwargs.get("custom_device_id", None)
+        self.device_mobile = kwargs.get("device_mobile", True)
 
+        print("device_mobile", self.device_mobile)
         args = kwargs.get("browser_args", [])
         options = kwargs.get("browser_options", {})
 
@@ -73,11 +77,21 @@ class browser(BrowserInterface):
         self._thread_locals = threading.local()
         self._thread_locals.playwright = await async_playwright().start()
         self.playwright = self._thread_locals.playwright
-        self.browser = await self.playwright.webkit.launch(
-            args=self.args, **self.options
-        )
+        if self.device_mobile:
+            self.browser = await self.playwright.webkit.launch(
+                args=self.args, **self.options
+            )
+        else:
+            self.browser = await self.playwright.chromium.launch(
+                    args=self.args, **self.options
+            )
         context = await self._create_context(set_useragent=True)
         page = await context.new_page()
+        if not self.device_mobile:
+            await page.goto(self.web_url, wait_until='load')
+            # Find Discover part on the left side
+            await page.wait_for_selector("p[data-e2e=nav-discover-title]")
+            self.cookies = self.parsed_cookies(await context.cookies())
         await self.get_params(page)
         await context.close()
 
@@ -114,22 +128,38 @@ class browser(BrowserInterface):
         self.height = await page.evaluate("""() => { return screen.height; }""")
 
     async def _create_context(self, set_useragent=False):
-        iphone = self.playwright.devices["iPhone 11 Pro"]
-        iphone["viewport"] = {
-            "width": random.randint(320, 1920),
-            "height": random.randint(320, 1920),
-        }
-        iphone["device_scale_factor"] = random.randint(1, 3)
-        iphone["is_mobile"] = random.randint(1, 2) == 1
-        iphone["has_touch"] = random.randint(1, 2) == 1
+        if self.device_mobile:
+            iphone = self.playwright.devices["iPhone 11 Pro"]
+            iphone["viewport"] = {
+                "width": random.randint(320, 1920),
+                "height": random.randint(320, 1920),
+            }
+            iphone["device_scale_factor"] = random.randint(1, 3)
+            iphone["is_mobile"] = random.randint(1, 2) == 1
+            iphone["has_touch"] = random.randint(1, 2) == 1
 
-        iphone["bypass_csp"] = True
+            iphone["bypass_csp"] = True
 
-        context = await self.browser.new_context(**iphone)
-        if set_useragent:
-            self.user_agent = iphone["user_agent"]
-
+            context = await self.browser.new_context(**iphone)
+            if set_useragent:
+                self.user_agent = iphone["user_agent"]
+        else:
+            desktop_chrome = self.playwright.devices["Desktop Chrome"]
+            desktop_chrome["viewport"] = {
+                    "width":  2560,
+                    "height": 1440,
+            }
+            context = await self.browser.new_context(**desktop_chrome)
+            if set_useragent:
+                self.user_agent = desktop_chrome["user_agent"]
         return context
+
+    @staticmethod
+    def parsed_cookies(cookies):
+        parsed = {}
+        if cookies is not None:
+            return dict(map(itemgetter("name", "value"), cookies))
+        return parsed
 
     def _base36encode(self, number, alphabet="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
         """Converts an integer to a base36 string."""
@@ -169,79 +199,91 @@ class browser(BrowserInterface):
         return f'verify_{scenario_title.lower()}_{"".join(uuid)}'
 
     async def sign_url(self, url, calc_tt_params=False, **kwargs):
-        async def process(route):
-            await route.abort()
+        if self.device_mobile:
+            async def process(route):
+                await route.abort()
 
-        tt_params = None
-        context = await self._create_context()
-        page = await context.new_page()
+            tt_params = None
+            context = await self._create_context()
+            page = await context.new_page()
 
-        if calc_tt_params:
-            await page.route(
-                re.compile(r"(\.png)|(\.jpeg)|(\.mp4)|(x-expire)"), process
+            if calc_tt_params:
+                await page.route(
+                    re.compile(r"(\.png)|(\.jpeg)|(\.mp4)|(x-expire)"), process
+                )
+                await page.goto(
+                    kwargs.get("default_url", "https://www.tiktok.com/@disneys_2"),
+                    wait_until="load",
+                )
+
+            verifyFp = "".join(
+                random.choice(
+                    string.ascii_lowercase + string.ascii_uppercase + string.digits
+                )
+                for i in range(16)
             )
-            await page.goto(
-                kwargs.get("default_url", "https://www.tiktok.com/@redbull"),
-                wait_until="load",
-            )
+            if kwargs.get("gen_new_verifyFp", False):
+                verifyFp = self.gen_verifyFp()
+            else:
+                verifyFp = kwargs.get("custom_verify_fp", verifyFp,)
 
-        verifyFp = "".join(
-            random.choice(
-                string.ascii_lowercase + string.ascii_uppercase + string.digits
-            )
-            for i in range(16)
-        )
-        if kwargs.get("gen_new_verifyFp", False):
-            verifyFp = self.gen_verifyFp()
-        else:
-            verifyFp = kwargs.get("custom_verify_fp", verifyFp,)
+            msToken = kwargs.get("msToken")
 
-        msToken = kwargs.get("ms_token", "5bbuO45TT6B3MQ9P50Kj5eo3nNFePwDe-Zl_BOcuYusIDzuUgAZC1GzX4P_PWwGyZUd2FtMzUDyRIe0mcqXD_4HjaR9vdR4kXW5nQ8ByLo40GvtRL2KszbsN5NOF_hBdZako4fKcZv_QIO7-5wM=")
+            if kwargs.get("custom_device_id") is not None:
+                device_id = kwargs.get("custom_device_id", None)
+            elif self.device_id is None:
+                device_id = str(random.randint(10000, 999999999))
+            else:
+                device_id = self.device_id
 
-        if kwargs.get("custom_device_id") is not None:
-            device_id = kwargs.get("custom_device_id", None)
-        elif self.device_id is None:
-            device_id = str(random.randint(10000, 999999999))
-        else:
-            device_id = self.device_id
+            url = "{}&verifyFp={}&device_id={}&msToken={}".format(url, verifyFp, device_id, msToken)
 
-        url = "{}&verifyFp={}&device_id={}&msToken={}".format(url, verifyFp, device_id, msToken)
-
-        await page.add_script_tag(content=_get_acrawler())
-        evaluatedPage = await page.evaluate(
-            '''() => {
-            var url = "'''
-            + url
-            + """"
-            var token = window.byted_acrawler.sign({url: url});
-            
-            return token;
-            }"""
-        )
-
-        url = "{}&_signature={}".format(url, evaluatedPage)
-
-        if calc_tt_params:
-            await page.add_script_tag(content=_get_tt_params_script())
-
-            tt_params = await page.evaluate(
-                """() => {
-                    return window.genXTTParams("""
-                + json.dumps(dict(parse_qsl(urlparse(url).query)))
-                + """);
-            
+            await page.add_script_tag(content=_get_acrawler())
+            evaluatedPage = await page.evaluate(
+                '''() => {
+                var url = "'''
+                + url
+                + """"
+                var token = window.byted_acrawler.sign({url: url});
+                
+                return token;
                 }"""
             )
 
-        await context.close()
-        return (verifyFp, device_id, msToken, evaluatedPage, tt_params)
+            url = "{}&_signature={}".format(url, evaluatedPage)
+
+            if calc_tt_params:
+                await page.add_script_tag(content=_get_tt_params_script())
+
+                tt_params = await page.evaluate(
+                    """() => {
+                        return window.genXTTParams("""
+                    + json.dumps(dict(parse_qsl(urlparse(url).query)))
+                    + """);
+                
+                    }"""
+                )
+
+            await context.close()
+            return (verifyFp, device_id, msToken, evaluatedPage, tt_params)
+        else:
+            context = await self._create_context()
+            page = await context.new_page()
+
+            await page.goto(url, wait_until='load')
+            # Find Discover part on the left side
+            await page.wait_for_selector("p[data-e2e=nav-discover-title]")
+            page_html = await page.content()
+
+            await context.close()
+            return page_html
 
     async def _clean_up(self):
         await self.browser.close()
         await self.playwright.stop()
 
     def find_redirect(self, url):
-        self.page.goto(url, {"waitUntil": "load"})
+        await self.page.goto(url, {"waitUntil": "load"})
         self.redirect_url = self.page.url
 
     def __format_proxy(self, proxy):

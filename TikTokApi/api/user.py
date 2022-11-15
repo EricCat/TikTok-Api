@@ -94,7 +94,7 @@ class User:
             js_json_text = sel.xpath("//script[contains(@id, 'SIGI_STATE')]/text()").extract_first('').strip()
             json_results = json.loads(js_json_text)
 
-            # uncomment these lines for debug
+            # # uncomment these lines for debug
             # file_name = f'{self.username}-tiktok-stats-data.json'
             # with open(file_name, 'w', encoding='utf-8') as f:
             #     json.dump(js_json_text, f, ensure_ascii=False, sort_keys=True, indent=4)
@@ -114,7 +114,7 @@ class User:
                                   user_stats=user_stats,
                                   )
                 user_posts = []
-                if kwargs.get("include_video", False):
+                if kwargs.get("include_video", True):
                     videos_list = deep_get(json_results, 'ItemModule')
                     user_posts = [item for _, item in videos_list.items()]
 
