@@ -12,8 +12,8 @@ from .browser_interface import BrowserInterface
 from urllib.parse import parse_qsl, urlparse
 import threading
 from ..utilities import LOGGER_NAME
-from .get_acrawler import _get_acrawler, _get_tt_params_script
-from playwright.async_api import async_playwright
+from .get_acrawler import _get_acrawler, _get_tt_params_script, _get_signer_script, _get_webmssdk_script
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 from operator import itemgetter
 
 
@@ -41,7 +41,6 @@ class browser(BrowserInterface):
         self.device_id = kwargs.get("custom_device_id", None)
         self.device_mobile = kwargs.get("device_mobile", True)
 
-        print("device_mobile", self.device_mobile)
         args = kwargs.get("browser_args", [])
         options = kwargs.get("browser_options", {})
 
@@ -77,21 +76,20 @@ class browser(BrowserInterface):
         self._thread_locals = threading.local()
         self._thread_locals.playwright = await async_playwright().start()
         self.playwright = self._thread_locals.playwright
-        if self.device_mobile:
-            self.browser = await self.playwright.webkit.launch(
+        self.browser = await self.playwright.webkit.launch(
                 args=self.args, **self.options
-            )
-        else:
-            self.browser = await self.playwright.chromium.launch(
-                    args=self.args, **self.options
-            )
+        )
         context = await self._create_context(set_useragent=True)
         page = await context.new_page()
         if not self.device_mobile:
-            await page.goto(self.web_url, wait_until='load')
-            # Find Discover part on the left side
-            await page.wait_for_selector("p[data-e2e=nav-discover-title]")
-            self.cookies = self.parsed_cookies(await context.cookies())
+            try:
+                await page.goto(self.web_url, wait_until='load')
+                # Find Discover part on the left side
+                await page.wait_for_selector("p[data-e2e=nav-discover-title]")
+                # await page.pause()
+                self.cookies = self.parsed_cookies(await context.cookies())
+            except PlaywrightTimeoutError:
+                raise Exception("Playwright loads page's selector timeout")
         await self.get_params(page)
         await context.close()
 
@@ -199,7 +197,8 @@ class browser(BrowserInterface):
         return f'verify_{scenario_title.lower()}_{"".join(uuid)}'
 
     async def sign_url(self, url, calc_tt_params=False, **kwargs):
-        if self.device_mobile:
+        api_req = kwargs.get("api_req", True)
+        if api_req:
             async def process(route):
                 await route.abort()
 
@@ -227,8 +226,6 @@ class browser(BrowserInterface):
             else:
                 verifyFp = kwargs.get("custom_verify_fp", verifyFp,)
 
-            msToken = kwargs.get("msToken")
-
             if kwargs.get("custom_device_id") is not None:
                 device_id = kwargs.get("custom_device_id", None)
             elif self.device_id is None:
@@ -236,10 +233,25 @@ class browser(BrowserInterface):
             else:
                 device_id = self.device_id
 
-            url = "{}&verifyFp={}&device_id={}&msToken={}".format(url, verifyFp, device_id, msToken)
+            url = "{}&verifyFp={}&device_id={}".format(url, verifyFp, device_id)
 
+            # # Get x-tt-params
+            if calc_tt_params:
+                await page.add_script_tag(content=_get_tt_params_script())
+                tt_params_url = url + "&is_encryption=1"
+                tt_params = await page.evaluate(
+                        """() => {
+                            return window.genXTTParams("""
+                        + json.dumps(dict(parse_qsl(urlparse(tt_params_url).query)))
+                        + """);
+                                }"""
+                )
+                print(f"req parameter --> x-tt-params: {tt_params}")
+
+            # # Get _signature
             await page.add_script_tag(content=_get_acrawler())
-            evaluatedPage = await page.evaluate(
+            # await page.add_script_tag(content=_get_signer_script())
+            signature = await page.evaluate(
                 '''() => {
                 var url = "'''
                 + url
@@ -249,23 +261,32 @@ class browser(BrowserInterface):
                 return token;
                 }"""
             )
+            print(f"req parameter --> _signature: {signature}")
+            url = "{}&_signature={}".format(url, signature)
 
-            url = "{}&_signature={}".format(url, evaluatedPage)
 
-            if calc_tt_params:
-                await page.add_script_tag(content=_get_tt_params_script())
+            # # FIXME: Get x-bogus
+            # try:
+            #     await page.add_script_tag(content=_get_webmssdk_script())
+            #     x_bogus = await page.evaluate(
+            #             '''() => {
+            #                 var params = "'''
+            #                 + str(urlparse(url).query) + ";"
+            #                 + """"
+            #                 window.byted_acrawler.init({aid: 24,dfp: true,});
+            #                 var token = window._0x32d649(params);
+            #                 return token;
+            #             }"""
+            #     )
+            # except (SyntaxError, TypeError) as ex:
+            #     x_bogus = "DFSzswVYrhtANVnhS8hsPJe9PfRD"
+            x_bogus = "DFSzswVYrhtANVnhS8hsPJe9PfRD"
 
-                tt_params = await page.evaluate(
-                    """() => {
-                        return window.genXTTParams("""
-                    + json.dumps(dict(parse_qsl(urlparse(url).query)))
-                    + """);
-                
-                    }"""
-                )
+            print(f"req parameter --> X-Bogus: {x_bogus}")
+            url = "{}&X-Bogus={}".format(url, x_bogus)
 
             await context.close()
-            return (verifyFp, device_id, msToken, evaluatedPage, tt_params)
+            return (verifyFp, device_id, signature, x_bogus, tt_params)
         else:
             context = await self._create_context()
             page = await context.new_page()
