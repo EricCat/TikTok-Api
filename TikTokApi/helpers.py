@@ -1,5 +1,5 @@
 import json
-from urllib.parse import urlencode, parse_qsl, urlparse, parse_qs
+from urllib.parse import urlencode, parse_qsl, urlparse, parse_qs, unquote_plus
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 from base64 import b64encode, b64decode
@@ -99,17 +99,6 @@ def parse_url(url):
         return urlparse(url).geturl()
     return
 
-def encrypt_tt_param_v1(text):
-    password = XTTPARAMS_AES_PASSWORD_ENCRYPTION
-    text = text + '&is_encryption=1'
-    iv = password.encode()
-    password = password.encode()
-    msg = pad(text.encode(), AES.block_size)
-    cipher = AES.new(password, AES.MODE_CBC, iv)
-    cipher_text = cipher.encrypt(msg)
-    out = b64encode(cipher_text).decode('utf-8')
-    return out
-
 
 def encrypt_tt_param_v2(r):
     s = urlencode(r, doseq=True, quote_via=lambda s, *_: s)
@@ -124,4 +113,7 @@ def decrypt_tt_param_v2(s):
     cipher = AES.new(key, AES.MODE_CBC, key)
     ct = b64decode(s)
     s = unpad(cipher.decrypt(ct), AES.block_size)
-    return dict(parse_qsl(s.decode("utf-8"), keep_blank_values=True))
+    # return dict(parse_qsl(s.decode("utf-8"), keep_blank_values=True))    # # parse_qsl has issue deal with `;`
+    pairs = [p.split("=", 1) for p in s.decode("utf-8").split("&")]
+    decoded = [(unquote_plus(k), unquote_plus(v)) for (k, v) in pairs]
+    return decoded
