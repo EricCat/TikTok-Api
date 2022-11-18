@@ -195,7 +195,8 @@ class TikTokApi:
             raise Exception("Please use 'custom_device_id' instead of 'custom_did'")
         self._custom_device_id = kwargs.get("custom_device_id", None)
         self._user_agent = "5.0 (iPhone; CPU iPhone OS 14_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1"  # TODO: Randomly generate agents
-        self._user_agent_pc = "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/536.5 (KHTML, like Gecko) Chrome/19.0.1084.52 Safari/536.5"
+        self._user_agent_pc = "5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36 Edg/105.0.1343.53"
+        self._user_agent_mac = "5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36"
         self._proxy = kwargs.get("proxy", None)
         self._custom_verify_fp = kwargs.get("custom_verify_fp")
         self._signer_url = kwargs.get("external_signer", None)
@@ -205,8 +206,7 @@ class TikTokApi:
         self._default_verifyFp = "verify_l9ql674l_H1vwgpNw_fniD_4vXL_8NWc_O0mraTy7tGDx"
         self._ms_token = kwargs.get("ms_token")
         self._ttw_id = kwargs.get("ttwid")
-        self._tt_csrf_token = "".join(
-                random.choice(string.ascii_uppercase + string.ascii_lowercase) for i in range(16))
+        self._tt_csrf_token = kwargs.get("tt_csrf_token")
         self._csrf_session_id = kwargs.get("csrf_session_id")  # TODO:generate csrf_session_id if it's None
 
         if kwargs.get("use_test_endpoints", False):
@@ -219,39 +219,44 @@ class TikTokApi:
             )
 
         if self._signer_url is None:
-            self._browser = asyncio.get_event_loop().run_until_complete(
-                asyncio.gather(browser.create(**kwargs))
-            )[0]
-
+            try:
+                self._browser = asyncio.get_event_loop().run_until_complete(
+                    asyncio.gather(browser.create(**kwargs))
+                )[0]
+            except Exception as ex:
+                raise ex
             self._user_agent = self._browser.user_agent
 
-        try:
-            _cookies = self._browser.cookies
-            if _cookies != None:
-                try:
-                    self._ms_token = _cookies["msToken"]
-                except (IndexError, ValueError, KeyError):
-                    self._ms_token = kwargs.get("ms_token")
+        if not kwargs.get("device_mobile"):
+            try:
+                _cookies = self._browser.cookies
+                if _cookies != None:
+                    try:
+                        self._ms_token = _cookies["msToken"]
+                    except (IndexError, ValueError, KeyError):
+                        self._ms_token = kwargs.get("ms_token")
 
-                try:
-                    self._ttw_id = _cookies["ttwid"]
-                except (IndexError, ValueError, KeyError):
-                    self._ttw_id = kwargs.get("ttwid")
+                    try:
+                        self._ttw_id = _cookies["ttwid"]
+                    except (IndexError, ValueError, KeyError):
+                        self._ttw_id = kwargs.get("ttwid")
 
-                try:
-                    self._tt_csrf_token = _cookies["tt_csrf_token"]
-                except (IndexError, ValueError, KeyError):
-                    self._tt_csrf_token = kwargs.get("tt_csrf_token")
+                    try:
+                        self._tt_csrf_token = _cookies["tt_csrf_token"]
+                    except (IndexError, ValueError, KeyError):
+                        self._tt_csrf_token = "".join(
+                                    random.choice(string.ascii_uppercase + string.ascii_lowercase) for i in range(16))
 
-                try:
-                    self._csrf_session_id = _cookies["csrf_session_id"]
-                except (IndexError, ValueError, KeyError):
-                    self._csrf_session_id = kwargs.get("csrf_session_id")
+                    try:
+                        self._csrf_session_id = _cookies["csrf_session_id"]
+                    except (IndexError, ValueError, KeyError):
+                        self._csrf_session_id = kwargs.get("csrf_session_id")
 
-        except Exception as e:
-            self.logger.exception(
-                "An error occurred while fetching cookies from browser, but it was ignored",
-            )
+            except (AttributeError, ValueError, KeyError) as e:
+                self.logger.exception(
+                    "An error occurred while fetching cookies from browser, but it was ignored",
+                    e
+                )
 
         try:
             self._timezone_name = self._browser.timezone_name
@@ -285,8 +290,9 @@ class TikTokApi:
         if self._request_delay is not None:
             time.sleep(self._request_delay)
 
-        if self._proxy is not None:
-            proxy = self._proxy
+        # if self._proxy is not None:
+        #     proxy = self._proxy
+        kwargs["api_req"] = True
 
         if kwargs.get("custom_verify_fp") == None:
             if self._custom_verify_fp != None:
@@ -303,12 +309,11 @@ class TikTokApi:
 
         if self._signer_url is None:
             kwargs["custom_verify_fp"] = verifyFp
-            kwargs['msToken'] = self._ms_token
             (
                 verify_fp,
                 device_id,
-                msToken,
                 signature,
+                x_bogus,
                 tt_params,
             ) = asyncio.get_event_loop().run_until_complete(
                 asyncio.gather(
@@ -326,23 +331,28 @@ class TikTokApi:
             (
                 verify_fp,
                 device_id,
-                msToken,
                 signature,
+                x_bogus,
                 user_agent,
                 referrer,
             ) = self.external_signer(
                 full_url,
                 custom_device_id=kwargs.get("custom_device_id"),
                 verifyFp=kwargs.get("custom_verify_fp", verifyFp),
-                msToken=self._ms_token,
             )
 
         if not kwargs.get("send_tt_params", False):
             tt_params = None
 
-        query = {"verifyFp": verify_fp, "device_id": device_id, "msToken": msToken, "_signature": signature}
+        query = {"verifyFp": verify_fp,
+                 "device_id": device_id,
+                 "msToken": self._ms_token,
+                 "_signature": signature,
+                 "X-Bogus": x_bogus}
         url = "{}&{}".format(full_url, urlencode(query))
 
+        print(f"Request URL: {url}")
+        print(f"Request user_agent: {user_agent}; referrer: {referrer}")
         h = requests.head(
             url,
             headers={"x-secsdk-csrf-version": "1.2.5", "x-secsdk-csrf-request": "1"},
@@ -365,13 +375,13 @@ class TikTokApi:
             "accept-encoding": "gzip",
             "accept-language": "en-US,en;q=0.9",
             "origin": referrer,
-            "referer": referrer,
+            "referer": f"{referrer}/@disneys_2",
             "sec-fetch-dest": "empty",
             "sec-fetch-mode": "cors",
             "sec-fetch-site": "none",
             "sec-gpc": "1",
             "user-agent": user_agent,
-            "x-secsdk-csrf-token": csrf_token,
+            # "x-secsdk-csrf-token": csrf_token,
             "x-tt-params": tt_params,
         }
 
@@ -385,7 +395,7 @@ class TikTokApi:
         )
 
         self.cookie_jar = r.cookies
-
+        print("resp", r.status_code, r.text)
         try:
             parsed_data = r.json()
             if (
@@ -463,6 +473,7 @@ class TikTokApi:
 
     def get_html(self, url, **kwargs) -> str:
         try:
+            kwargs["api_req"] = False
             html_resp = asyncio.get_event_loop().run_until_complete(
                         asyncio.gather(self._browser.sign_url(url, calc_tt_params=False, **kwargs)))[0]
             return html_resp
@@ -478,7 +489,7 @@ class TikTokApi:
             self.shutdown()
         return
 
-    def external_signer(self, url, custom_device_id=None, verifyFp=None, msToken=None):
+    def external_signer(self, url, custom_device_id=None, verifyFp=None):
         """Makes requests to an external signer instead of using a browser.
 
         ##### Parameters
@@ -505,10 +516,9 @@ class TikTokApi:
                 "url": url,
                 "custom_device_id": custom_device_id,
                 "verifyFp": verifyFp,
-                "msToken": msToken
             }
         else:
-            query = {"url": url, "verifyFp": verifyFp, "msToken": msToken}
+            query = {"url": url, "verifyFp": verifyFp,}
         data = requests.get(
             self._signer_url + "?{}".format(urlencode(query)),
             **self._requests_extra_kwargs,
@@ -518,8 +528,8 @@ class TikTokApi:
         return (
             parsed_data["verifyFp"],
             parsed_data["device_id"],
-            parsed_data["msToken"],
             parsed_data["_signature"],
+            parsed_data["X-Bogus"],
             parsed_data["user_agent"],
             parsed_data["referrer"],
         )
@@ -539,8 +549,8 @@ class TikTokApi:
 
         if kwargs.get("force_verify_fp_on_cookie_header", False):
             return {
-                "tt_webid": device_id,
-                "tt_webid_v2": device_id,
+                # "tt_webid": device_id,
+                # "tt_webid_v2": device_id,
                 "csrf_session_id": self._csrf_session_id,
                 "tt_csrf_token": self._tt_csrf_token,
                 "s_v_web_id": verifyFp,
@@ -550,8 +560,8 @@ class TikTokApi:
             }
         else:
             return {
-                "tt_webid": device_id,
-                "tt_webid_v2": device_id,
+                # "tt_webid": device_id,
+                # "tt_webid_v2": device_id,
                 "csrf_session_id": self._csrf_session_id,
                 "tt_csrf_token": self._tt_csrf_token,
                 "msToken": self._ms_token,
@@ -653,40 +663,62 @@ class TikTokApi:
             region=region, language=language, proxy=proxy, device_id=device_id
         )
 
-    def _add_url_params(self) -> str:
+    def _add_url_params(self, device="iphone") -> str:
         try:
             region = self._region
-            browser_language = self._browser_language.lower()
+            browser_language = self._browser_language
             timezone = self._timezone_name
             language = self._language
         except AttributeError as e:
             self.logger.debug("Attribute Error on add_url_params", exc_info=e)
             region = "US"
-            browser_language = "en-us"
+            browser_language = "en-US"
             timezone = "America/Chicago"
             language = "en"
+
+        if device == "win":
+            os_type = "windows"
+            device_platform = "web_pc"
+            browser_platform = "Win32"
+            browser_version = self._user_agent_pc
+        elif device == "mac":
+            os_type = "mac"
+            device_platform = "web_pc"
+            browser_platform = "MacIntel"
+            browser_version = self._user_agent_mac
+        else:
+            os_type = "ios"
+            device_platform = "web_mobile"
+            browser_platform = "iPhone"
+            browser_version = self._user_agent
+
         query = {
             "aid": 1988,
             "app_name": "tiktok_web",
-            "device_platform": "web_mobile",
+            "channel": "tiktok_web",
+            "app_language": language,
+            "device_platform": device_platform,
             "region": region,
-            "priority_region": "",
-            "os": "ios",
-            "referer": "",
+            "priority_region": "US",
+            "os": os_type,
+            "referer": 'undefined',
+            "root_referer": "undefined",
             "cookie_enabled": "true",
             "screen_width": self._width,
             "screen_height": self._height,
             "browser_language": browser_language,
-            "browser_platform": "iPhone",
+            "browser_platform": browser_platform,
             "browser_name": "Mozilla",
-            "browser_version": self._user_agent,
+            "browser_version": browser_version,
             "browser_online": "true",
-            "timezone_name": timezone,
+            "tz_name": timezone,
             "is_page_visible": "true",
             "focus_state": "true",
             "is_fullscreen": "false",
             "history_len": random.randint(1, 5),
+            "battery_info": 1,
             "language": language,
+            "webcast_language": "en",
         }
 
         return urlencode(query)
