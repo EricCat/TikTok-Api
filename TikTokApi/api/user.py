@@ -102,27 +102,33 @@ class User:
             try:
                 unique_id = deep_get(json_results, 'UserPage.uniqueId')
                 sec_uid = deep_get(json_results, 'UserPage.secUid')
-                self.user_id = unique_id
-                self.sec_uid = sec_uid
+                if unique_id or sec_uid:
+                    self.user_id = unique_id
+                    self.sec_uid = sec_uid
 
-                user_stats = deep_get(json_results, f'UserModule.stats.{unique_id}')
-                user_info = deep_get(json_results, f'UserModule.users.{unique_id}')
+                    user_stats = deep_get(json_results, f'UserModule.stats.{unique_id}')
+                    user_info = deep_get(json_results, f'UserModule.users.{unique_id}')
 
-                user_stats = dict(unique_id=unique_id,
-                                  sec_uid=sec_uid,
-                                  user_info=user_info,
-                                  user_stats=user_stats,
-                                  )
-                user_posts = []
-                if kwargs.get("include_video", True):
-                    videos_list = deep_get(json_results, 'ItemModule')
-                    user_posts = [item for _, item in videos_list.items()]
+                    user_stats = dict(unique_id=unique_id,
+                                      sec_uid=sec_uid,
+                                      user_info=user_info,
+                                      user_stats=user_stats,
+                                      )
+                    user_posts = []
+                    if kwargs.get("include_video", True):
+                        videos_list = deep_get(json_results, 'ItemModule')
+                        if videos_list:
+                            user_posts = [item for _, item in videos_list.items()]
 
-                return dict(user=dict(
-                        stats=user_stats,
-                        posts=user_posts
-                ))
-            except (ValueError, IndexError):
+                    return dict(user=dict(
+                            stats=user_stats,
+                            posts=user_posts,
+                            cookies=User.parent._get_cookies()
+                    ))
+                else:
+                    print()
+                    raise HTMLNotAvailableException(0, None, "Failed to fetch valid data from HTML JS tag")
+            except (ValueError, IndexError, TypeError, KeyError):
                 return {}
 
         except HTMLNotAvailableException as ex:
@@ -205,26 +211,29 @@ class User:
         while get_all or amount_yielded < count:
             query = {
                 "count": 30,
-                "id": self.user_id,
+                "from_page": "user",
+                "userId": self.user_id,
                 "cursor": cursor,
-                "type": 1,
                 "secUid": self.sec_uid,
-                "sourceType": 8,
-                "appId": 1233,
-                "region": processed.region,
-                "priority_region": processed.region,
-                "language": processed.language,
+                # "type": 1,
+                # "sourceType": 8,
+                # "appId": 1233,
+                # "region": processed.region,
+                # "priority_region": processed.region,
+                # "language": processed.language,
             }
             path = "api/post/item_list/?{}&{}".format(
-                User.parent._add_url_params(), urlencode(query)
+                User.parent._add_url_params(device="mac"), urlencode(query)
             )
+            User.parent.logger.info(f"Video fetching url: {path}")
 
-            res = User.parent.get_data(path, send_tt_params=True, **kwargs)
+            res = User.parent.get_data(path, subdomain="www", send_tt_params=True, **kwargs)
 
             videos = res.get("itemList", [])
             for video in videos:
                 amount_yielded += 1
-                yield self.parent.video(data=video)
+                yield video
+                # yield self.parent.video(data=video)
 
             if not res.get("hasMore", False) and not first:
                 User.parent.logger.info(
