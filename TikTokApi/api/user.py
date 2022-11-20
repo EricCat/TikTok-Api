@@ -212,10 +212,11 @@ class User:
             res = User.parent.get_data(path, subdomain="us", send_tt_params=True, **kwargs)
 
             videos = res.get("itemList", [])
-            for video in videos:
-                amount_yielded += 1
-                yield video
-                # yield self.parent.video(data=video)
+            yield videos
+            # for video in videos:
+            #     amount_yielded += 1
+            #     # yield video
+            #     yield self.parent.video(data=video)
 
             if not res.get("hasMore", False) and not first:
                 User.parent.logger.info(
