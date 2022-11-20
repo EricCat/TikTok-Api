@@ -6,6 +6,7 @@ import browser_cookie3
 import time, random
 from urllib.parse import quote, urlencode
 from parsel import Selector
+from bs4 import BeautifulSoup
 
 from ..exceptions import *
 from ..helpers import extract_tag_contents, deep_get, parse_url
@@ -101,62 +102,40 @@ class User:
             #     json.dump(js_json_text, f, ensure_ascii=False, sort_keys=True, indent=4)
 
             try:
-                unique_id = deep_get(json_results, 'UserPage.uniqueId')
-                sec_uid = deep_get(json_results, 'UserPage.secUid')
-                if unique_id or sec_uid:
-                    self.user_id = unique_id
-                    self.sec_uid = sec_uid
-
-                    user_stats = deep_get(json_results, f'UserModule.stats.{unique_id}')
-                    user_info = deep_get(json_results, f'UserModule.users.{unique_id}')
-
-                    user_stats = dict(unique_id=unique_id,
-                                      sec_uid=sec_uid,
-                                      user_info=user_info,
-                                      user_stats=user_stats,
-                                      )
-                    user_posts = []
-                    if kwargs.get("include_video", True):
-                        videos_list = deep_get(json_results, 'ItemModule')
-                        if videos_list:
-                            user_posts = [item for _, item in videos_list.items()]
-
-                    return dict(user=dict(
-                            stats=user_stats,
-                            posts=user_posts,
-                            cookies=User.parent._get_cookies()
-                    ))
-                else:
-                    print()
-                    raise HTMLNotAvailableException(0, None, "Failed to fetch valid data from HTML JS tag")
-            except (ValueError, IndexError, TypeError, KeyError):
-                return {}
+                return self.__extract_from_responsed(json_results)
+            except Exception:
+                raise HTMLNotAvailableException(0, None, "Failed to fetch valid data from HTML JS tag")
 
         except HTMLNotAvailableException as ex:
             # Fetch cookies
             cookies = browser_cookie3.load()
-            r = requests.get(
+            tt = requests.get(
                 "https://tiktok.com/@{}?lang=en".format(quoted_username),
                 headers={
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
-                    "path": "/@{}".format(quoted_username),
-                    "Accept-Encoding": "gzip, deflate",
-                    "Connection": "keep-alive",
-                    "User-Agent": User.parent._user_agent,
+                        'Accept-Encoding':           'gzip, deflate, sdch',
+                        'Accept-Language':           'en-US,en;q=0.8',
+                        'Upgrade-Insecure-Requests': '1',
+                        'User-Agent':                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, '
+                                                     'like Gecko) Chrome/56.0.2924.87 Safari/537.36',
+                        'Accept':                    'text/html,application/xhtml+xml,application/xml;q=0.9,'
+                                                     'image/webp,*/*;q=0.8',
+                        'Cache-Control':             'max-age=0',
+                        'Connection':                'keep-alive'
                 },
                 proxies=User.parent._format_proxy(kwargs.get("proxy", None)),
                 cookies=cookies,
                 **User.parent._requests_extra_kwargs,
             )
-            data = extract_tag_contents(r.text)
-            user = json.loads(data)
-
-            user_props = user["props"]["pageProps"]
-            if user_props["statusCode"] == 404:
-                raise NotFoundException(
-                    "TikTok user with username {} does not exist".format(self.username)
-                )
-            return user_props["userInfo"]
+            soup = BeautifulSoup(tt.text, "html.parser")
+            tt_script = soup.find('script', attrs={'id': "SIGI_STATE"})
+            try:
+                tt_json = json.loads(tt_script.string)
+                return self.__extract_from_responsed(tt_json)
+            except Exception:
+                raise CaptchaException(0, None,
+                                       "TikTok blocks this request displaying a Captcha \nTip: Consider using a proxy "
+                                       "or a custom_verify_fp as method parameters"
+                                       )
         except CaptchaException as ex:
             # There is a route for user info, but uses msToken
             processed = User.parent._process_kwargs(kwargs)
@@ -312,6 +291,35 @@ class User:
 
             cursor = res["cursor"]
             first = False
+
+    def __extract_from_responsed(self, json_resp, **kwargs):
+        unique_id = deep_get(json_resp, 'UserPage.uniqueId')
+        sec_uid = deep_get(json_resp, 'UserPage.secUid')
+        if unique_id or sec_uid:
+            self.user_id = unique_id
+            self.sec_uid = sec_uid
+
+            user_stats = deep_get(json_resp, f'UserModule.stats.{unique_id}')
+            user_info = deep_get(json_resp, f'UserModule.users.{unique_id}')
+
+            user_stats = dict(unique_id=unique_id,
+                              sec_uid=sec_uid,
+                              user_info=user_info,
+                              user_stats=user_stats,
+                              )
+            user_posts = []
+            if kwargs.get("include_video", True):
+                videos_list = deep_get(json_resp, 'ItemModule')
+                if videos_list:
+                    user_posts = [item for _, item in videos_list.items()]
+
+            return dict(user=dict(
+                    stats=user_stats,
+                    posts=user_posts,
+                    cookies=User.parent._get_cookies()
+            ))
+        else:
+            raise AttributeError(0, None, "Invalid JSON Responsed")
 
     def __extract_from_data(self):
         data = self.as_dict
