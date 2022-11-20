@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 from urllib.parse import urlencode
-
+import browser_cookie3
 import requests
 
 from .api.comment import Comment
@@ -195,19 +195,20 @@ class TikTokApi:
             raise Exception("Please use 'custom_device_id' instead of 'custom_did'")
         self._custom_device_id = kwargs.get("custom_device_id", None)
         self._user_agent = "5.0 (iPhone; CPU iPhone OS 14_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1"  # TODO: Randomly generate agents
-        self._user_agent_pc = "5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36 Edg/105.0.1343.53"
-        self._user_agent_mac = "5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/106.0.0.0 Safari/537.36"
+        self._user_agent_pc = "5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36 Edg/107.0.1418.35"
+        self._user_agent_mac = "5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36 Edg/107.0.1418.35"
         self._proxy = kwargs.get("proxy", None)
         self._custom_verify_fp = kwargs.get("custom_verify_fp")
         self._signer_url = kwargs.get("external_signer", None)
         self._request_delay = kwargs.get("request_delay", None)
         self._requests_extra_kwargs = kwargs.get("requests_extra_kwargs", {})
 
-        self._default_verifyFp = "verify_l9ql674l_H1vwgpNw_fniD_4vXL_8NWc_O0mraTy7tGDx"
+        self._default_verifyFp = "verify_lacphy8d_z2ux9idt_xdmu_4gKb_9nng_NNTTTvsFS8ao"
         self._ms_token = kwargs.get("ms_token")
         self._ttw_id = kwargs.get("ttwid")
         self._tt_csrf_token = kwargs.get("tt_csrf_token")
         self._csrf_session_id = kwargs.get("csrf_session_id")  # TODO:generate csrf_session_id if it's None
+        self._cookies = None
 
         if kwargs.get("use_test_endpoints", False):
             global BASE_URL
@@ -229,26 +230,26 @@ class TikTokApi:
 
         if not kwargs.get("device_mobile"):
             try:
-                _cookies = self._browser.cookies
-                if _cookies != None:
+                self._cookies = self._browser.cookies
+                if self._cookies is not None:
                     try:
-                        self._ms_token = _cookies["msToken"]
+                        self._ms_token = self._cookies["msToken"]
                     except (IndexError, ValueError, KeyError):
                         self._ms_token = kwargs.get("ms_token")
 
                     try:
-                        self._ttw_id = _cookies["ttwid"]
+                        self._ttw_id = self._cookies["ttwid"]
                     except (IndexError, ValueError, KeyError):
                         self._ttw_id = kwargs.get("ttwid")
 
                     try:
-                        self._tt_csrf_token = _cookies["tt_csrf_token"]
+                        self._tt_csrf_token = self._cookies["tt_csrf_token"]
                     except (IndexError, ValueError, KeyError):
                         self._tt_csrf_token = "".join(
                                     random.choice(string.ascii_uppercase + string.ascii_lowercase) for i in range(16))
 
                     try:
-                        self._csrf_session_id = _cookies["csrf_session_id"]
+                        self._csrf_session_id = self._cookies["csrf_session_id"]
                     except (IndexError, ValueError, KeyError):
                         self._csrf_session_id = kwargs.get("csrf_session_id")
 
@@ -353,6 +354,7 @@ class TikTokApi:
 
         print(f"Request URL: {url}")
         print(f"Request user_agent: {user_agent}; referrer: {referrer}")
+
         h = requests.head(
             url,
             headers={"x-secsdk-csrf-version": "1.2.5", "x-secsdk-csrf-request": "1"},
@@ -371,14 +373,15 @@ class TikTokApi:
             "method": "GET",
             "path": url.split("tiktok.com")[1],
             "scheme": "https",
-            "accept": "application/json, text/plain, */*",
-            "accept-encoding": "gzip",
-            "accept-language": "en-US,en;q=0.9",
-            "origin": referrer,
-            "referer": f"{referrer}/@disneys_2",
+            "accept": "*/*",
+            "accept-encoding": "gzip, deflate, br",
+            "accept-language": "en-US,en;q=0.8",
+            # "cookie": self._cookies,
+            "origin": "https://www.tiktok.com",   # referrer,
+            "referer": "https://www.tiktok.com/", #
             "sec-fetch-dest": "empty",
             "sec-fetch-mode": "cors",
-            "sec-fetch-site": "none",
+            "sec-fetch-site": "same-site",
             "sec-gpc": "1",
             "user-agent": user_agent,
             # "x-secsdk-csrf-token": csrf_token,
@@ -663,7 +666,11 @@ class TikTokApi:
             region=region, language=language, proxy=proxy, device_id=device_id
         )
 
-    def _add_url_params(self, device="iphone") -> str:
+    def _add_url_params(self, device="iphone", **kwargs) -> str:
+        if kwargs.get("username", None):
+            username = f'/@{kwargs.get("username")}'
+        else:
+            username = ''
         try:
             region = self._region
             browser_language = self._browser_language
@@ -681,16 +688,22 @@ class TikTokApi:
             device_platform = "web_pc"
             browser_platform = "Win32"
             browser_version = self._user_agent_pc
+            referer = "https://www.tiktok.com{}".format(username)
+            root_referer = "https://www.tiktok.com{}".format(username)
         elif device == "mac":
             os_type = "mac"
             device_platform = "web_pc"
             browser_platform = "MacIntel"
             browser_version = self._user_agent_mac
+            referer = "https://www.tiktok.com{}".format(username)
+            root_referer = "https://www.tiktok.com{}".format(username)
         else:
             os_type = "ios"
             device_platform = "web_mobile"
             browser_platform = "iPhone"
             browser_version = self._user_agent
+            referer = "https://m.tiktok.com{}".format(username)
+            root_referer = "https://m.tiktok.com{}".format(username)
 
         query = {
             "aid": 1988,
@@ -701,8 +714,8 @@ class TikTokApi:
             "region": region,
             "priority_region": "US",
             "os": os_type,
-            "referer": 'undefined',
-            "root_referer": "undefined",
+            "referer": referer,
+            "root_referer": root_referer,
             "cookie_enabled": "true",
             "screen_width": self._width,
             "screen_height": self._height,

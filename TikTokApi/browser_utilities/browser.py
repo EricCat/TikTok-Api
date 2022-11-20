@@ -2,6 +2,7 @@ import random
 import time
 import string
 from typing import Any, Optional
+from operator import itemgetter
 import requests
 import logging
 import time
@@ -11,11 +12,11 @@ import re
 from .browser_interface import BrowserInterface
 from urllib.parse import parse_qsl, urlparse
 import threading
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
+
 from ..utilities import LOGGER_NAME
 from .get_acrawler import _get_acrawler, _get_tt_params_script, _get_signer_script, _get_webmssdk_script
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
-from operator import itemgetter
-
+from TikTokApi.helpers import encrypt_tt_param_v2
 
 logger = logging.getLogger(LOGGER_NAME)
 
@@ -82,14 +83,12 @@ class browser(BrowserInterface):
         context = await self._create_context(set_useragent=True)
         page = await context.new_page()
         if not self.device_mobile:
-            try:
-                await page.goto(self.web_url, wait_until='load')
-                # Find Discover part on the left side
-                await page.wait_for_selector("p[data-e2e=nav-discover-title]")
-                # await page.pause()
-                self.cookies = self.parsed_cookies(await context.cookies())
-            except PlaywrightTimeoutError:
-                raise Exception("Playwright loads page's selector timeout")
+            await page.goto(self.web_url)
+            # Find Discover part on the left side
+            await page.wait_for_selector("p[data-e2e=nav-discover-title]")
+            # await page.pause()
+            self.cookies = self.parsed_cookies(await context.cookies())
+
         await self.get_params(page)
         await context.close()
 
@@ -206,14 +205,14 @@ class browser(BrowserInterface):
             context = await self._create_context()
             page = await context.new_page()
 
-            if calc_tt_params:
-                await page.route(
-                    re.compile(r"(\.png)|(\.jpeg)|(\.mp4)|(x-expire)"), process
-                )
-                await page.goto(
-                    kwargs.get("default_url", "https://www.tiktok.com/@disneys_2"),
-                    wait_until="load",
-                )
+            # if calc_tt_params:
+            #     await page.route(
+            #         re.compile(r"(\.png)|(\.jpeg)|(\.mp4)|(x-expire)"), process
+            #     )
+            #     await page.goto(
+            #         kwargs.get("default_url", "https://www.tiktok.com/@disneys_2"),
+            #         wait_until="load",
+            #     )
 
             verifyFp = "".join(
                 random.choice(
@@ -237,15 +236,26 @@ class browser(BrowserInterface):
 
             # # Get x-tt-params
             if calc_tt_params:
-                await page.add_script_tag(content=_get_tt_params_script())
+                # await page.add_script_tag(content=_get_tt_params_script())
                 tt_params_url = url + "&is_encryption=1"
-                tt_params = await page.evaluate(
-                        """() => {
-                            return window.genXTTParams("""
-                        + json.dumps(dict(parse_qsl(urlparse(tt_params_url).query)))
-                        + """);
-                                }"""
-                )
+                query_to_dict = dict(parse_qsl(urlparse(tt_params_url).query))
+                if kwargs.get('tt_params_ord_lst', None):
+                    try:
+                        playload = {key : query_to_dict[key] for key in kwargs.get('tt_params_ord_lst')}
+                    except KeyError as ke:
+                        print(ke)
+                        playload = query_to_dict
+                else:
+                    playload = query_to_dict
+
+                # tt_params = await page.evaluate(
+                #         """() => {
+                #             return window.genXTTParams("""
+                #         + json.dumps(playload)
+                #         + """);
+                #                 }"""
+                # )
+                tt_params = encrypt_tt_param_v2(playload)
                 print(f"req parameter --> x-tt-params: {tt_params}")
 
             # # Get _signature
@@ -279,8 +289,8 @@ class browser(BrowserInterface):
             #             }"""
             #     )
             # except (SyntaxError, TypeError) as ex:
-            #     x_bogus = "DFSzswVYrhtANVnhS8hsPJe9PfRD"
-            x_bogus = "DFSzswVYrhtANVnhS8hsPJe9PfRD"
+            #     x_bogus = "DFSzswVL-XGANHVWS0OnS2XyYJUm"
+            x_bogus = "DFSzswVL-XGANHVWS0OnS2XyYJUm"
 
             print(f"req parameter --> X-Bogus: {x_bogus}")
             url = "{}&X-Bogus={}".format(url, x_bogus)
@@ -288,16 +298,19 @@ class browser(BrowserInterface):
             await context.close()
             return (verifyFp, device_id, signature, x_bogus, tt_params)
         else:
-            context = await self._create_context()
-            page = await context.new_page()
+            try:
+                context = await self._create_context()
+                page = await context.new_page()
 
-            await page.goto(url, wait_until='load')
-            # Find Discover part on the left side
-            await page.wait_for_selector("p[data-e2e=nav-discover-title]")
-            page_html = await page.content()
+                await page.goto(url)
+                # Find Discover part on the left side
+                await page.wait_for_selector("p[data-e2e=nav-discover-title]")
+                page_html = await page.content()
 
-            await context.close()
-            return page_html
+                await context.close()
+                return page_html
+            except Exception:
+                raise Exception()
 
     async def _clean_up(self):
         await self.browser.close()

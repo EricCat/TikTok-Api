@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 import requests
-
+import browser_cookie3
+import time, random
 from urllib.parse import quote, urlencode
 from parsel import Selector
 
@@ -133,13 +134,7 @@ class User:
 
         except HTMLNotAvailableException as ex:
             # Fetch cookies
-            spawn = requests.head(
-                    "https://www.tiktok.com",
-                    proxies=User.parent._format_proxy(kwargs.get("proxy", None)),
-                    **User.parent._requests_extra_kwargs,
-                    headers={'User-Agent': User.parent._user_agent_pc}
-            )
-
+            cookies = browser_cookie3.load()
             r = requests.get(
                 "https://tiktok.com/@{}?lang=en".format(quoted_username),
                 headers={
@@ -150,7 +145,7 @@ class User:
                     "User-Agent": User.parent._user_agent,
                 },
                 proxies=User.parent._format_proxy(kwargs.get("proxy", None)),
-                cookies=spawn.cookies,
+                cookies=cookies,
                 **User.parent._requests_extra_kwargs,
             )
             data = extract_tag_contents(r.text)
@@ -204,7 +199,15 @@ class User:
 
         if not self.user_id and not self.sec_uid:
             self.__find_attributes()
-
+        kwargs["tt_params_ord_lst"] = ['aid', 'app_name', 'channel', 'device_platform', 'device_id', 'region',
+                                       'priority_region', 'os', 'referer', 'root_referer', 'cookie_enabled',
+                                       'screen_width', 'screen_height', 'browser_language', 'browser_platform',
+                                       'browser_name', 'browser_version', 'browser_online', 'verifyFp', 'app_language',
+                                       'webcast_language', 'tz_name', 'is_page_visible', 'focus_state',
+                                       'is_fullscreen', 'history_len', 'battery_info', 'from_page', 'secUid',
+                                       'count', 'cursor', 'language', 'userId',
+                                       # 'is_encryption'
+                                       ]
         first = True
         amount_yielded = 0
 
@@ -223,11 +226,11 @@ class User:
                 # "language": processed.language,
             }
             path = "api/post/item_list/?{}&{}".format(
-                User.parent._add_url_params(device="mac"), urlencode(query)
+                User.parent._add_url_params(device="iphone"), urlencode(query)
             )
             User.parent.logger.info(f"Video fetching url: {path}")
 
-            res = User.parent.get_data(path, subdomain="www", send_tt_params=True, **kwargs)
+            res = User.parent.get_data(path, subdomain="us", send_tt_params=True, **kwargs)
 
             videos = res.get("itemList", [])
             for video in videos:
@@ -243,6 +246,7 @@ class User:
 
             cursor = res["cursor"]
             first = False
+            time.sleep(random.randint(12, 21))
 
     def liked(self, count: int = 30, cursor: int = 0,
               get_all: bool = False, **kwargs) -> Iterator[Video]:
