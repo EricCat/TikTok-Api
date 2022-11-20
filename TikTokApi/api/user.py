@@ -89,21 +89,21 @@ class User:
             )
         quoted_username = quote(self.username)
         try:
-            page_html = User.parent.get_html("https://www.tiktok.com/@{}?lang=en".format(quoted_username),
-                                             **kwargs)
-
-            sel = Selector(text=page_html)
-            js_json_text = sel.xpath("//script[contains(@id, 'SIGI_STATE')]/text()").extract_first('').strip()
-            json_results = json.loads(js_json_text)
-
-            # # uncomment these lines for debug
-            # file_name = f'{self.username}-tiktok-stats-data.json'
-            # with open(file_name, 'w', encoding='utf-8') as f:
-            #     json.dump(js_json_text, f, ensure_ascii=False, sort_keys=True, indent=4)
-
             try:
+                page_html = User.parent.get_html("https://www.tiktok.com/@{}?lang=en".format(quoted_username),
+                                                 **kwargs)
+
+                sel = Selector(text=page_html)
+                js_json_text = sel.xpath("//script[contains(@id, 'SIGI_STATE')]/text()").extract_first('').strip()
+                json_results = json.loads(js_json_text)
+
+                # # uncomment these lines for debug
+                # file_name = f'{self.username}-tiktok-stats-data.json'
+                # with open(file_name, 'w', encoding='utf-8') as f:
+                #     json.dump(js_json_text, f, ensure_ascii=False, sort_keys=True, indent=4)
+
                 return self.__extract_from_responsed(json_results)
-            except Exception:
+            except AttributeError:
                 raise HTMLNotAvailableException(0, None, "Failed to fetch valid data from HTML JS tag")
 
         except HTMLNotAvailableException as ex:
