@@ -77,16 +77,15 @@ class browser(BrowserInterface):
         self._thread_locals = threading.local()
         self._thread_locals.playwright = await async_playwright().start()
         self.playwright = self._thread_locals.playwright
-        self.browser = await self.playwright.webkit.launch(
+        self.browser = await self.playwright.chromium.launch(
                 args=self.args, **self.options
         )
         context = await self._create_context(set_useragent=True)
         page = await context.new_page()
         if not self.device_mobile:
-            await page.goto(self.web_url)
+            await page.goto(self.web_url, wait_until='load')
             # Find Discover part on the left side
-            await page.wait_for_selector("p[data-e2e=nav-discover-title]")
-            # await page.pause()
+            # await page.wait_for_selector("p[data-e2e=nav-discover-title]")
             self.cookies = self.parsed_cookies(await context.cookies())
 
         await self.get_params(page)
@@ -141,14 +140,14 @@ class browser(BrowserInterface):
             if set_useragent:
                 self.user_agent = iphone["user_agent"]
         else:
-            desktop_chrome = self.playwright.devices["Desktop Chrome"]
-            desktop_chrome["viewport"] = {
-                    "width":  2560,
-                    "height": 1440,
-            }
-            context = await self.browser.new_context(**desktop_chrome)
+            # desktop_chrome = self.playwright.devices["Desktop Chrome"]
+            # desktop_chrome["viewport"] = {
+            #         "width":  2560,
+            #         "height": 1440,
+            # }
+            context = await self.browser.new_context(viewport={"width": 2560, "height": 1440})
             if set_useragent:
-                self.user_agent = desktop_chrome["user_agent"]
+                self.user_agent = "5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36 Edg/107.0.1418.35"
         return context
 
     @staticmethod
@@ -302,9 +301,10 @@ class browser(BrowserInterface):
                 context = await self._create_context()
                 page = await context.new_page()
 
-                await page.goto(url)
+                await page.goto(url, wait_until='load')
                 # Find Discover part on the left side
-                await page.wait_for_selector("p[data-e2e=nav-discover-title]")
+                # await page.wait_for_selector("p[data-e2e=nav-discover-title]")
+                # await page.pause()
                 page_html = await page.content()
 
                 await context.close()

@@ -90,7 +90,7 @@ class User:
         quoted_username = quote(self.username)
         try:
             try:
-                page_html = User.parent.get_html("https://www.tiktok.com/@{}?lang=en".format(quoted_username),
+                page_html = User.parent.get_html("https://www.tiktok.com/@{}".format(quoted_username),
                                                  **kwargs)
 
                 sel = Selector(text=page_html)
@@ -103,14 +103,14 @@ class User:
                 #     json.dump(js_json_text, f, ensure_ascii=False, sort_keys=True, indent=4)
 
                 return self.__extract_from_responsed(json_results)
-            except AttributeError:
+            except Exception:
                 raise HTMLNotAvailableException(0, None, "Failed to fetch valid data from HTML JS tag")
 
         except HTMLNotAvailableException as ex:
             # Fetch cookies
             cookies = browser_cookie3.load()
             tt = requests.get(
-                "https://tiktok.com/@{}?lang=en".format(quoted_username),
+                "https://tiktok.com/@{}".format(quoted_username),
                 headers={
                         'Accept-Encoding':           'gzip, deflate, sdch',
                         'Accept-Language':           'en-US,en;q=0.8',
