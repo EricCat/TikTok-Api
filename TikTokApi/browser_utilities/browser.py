@@ -35,7 +35,7 @@ class browser(BrowserInterface):
         self.debug = kwargs.get("debug", False)
         self.proxy = kwargs.get("proxy", None)
         self.api_url = kwargs.get("api_url", None)
-        self.web_url = kwargs.get("web_url", "https://www.tiktok.com/@disneys_2")
+        self.web_url = kwargs.get("web_url", "https://www.tiktok.com/@tiktok")
         self.referrer = kwargs.get("referer", "https://www.tiktok.com/")
         self.language = kwargs.get("language", "en")
         self.executable_path = kwargs.get("executable_path", None)
@@ -209,7 +209,7 @@ class browser(BrowserInterface):
             #         re.compile(r"(\.png)|(\.jpeg)|(\.mp4)|(x-expire)"), process
             #     )
             #     await page.goto(
-            #         kwargs.get("default_url", "https://www.tiktok.com/@disneys_2"),
+            #         kwargs.get("default_url", "https://www.tiktok.com/@tiktok"),
             #         wait_until="load",
             #     )
 
