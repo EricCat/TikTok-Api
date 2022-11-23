@@ -77,9 +77,12 @@ class browser(BrowserInterface):
         self._thread_locals = threading.local()
         self._thread_locals.playwright = await async_playwright().start()
         self.playwright = self._thread_locals.playwright
-        self.browser = await self.playwright.chromium.launch(
-                args=self.args, **self.options
-        )
+        if kwargs.get("browser_instance_remote", True):
+            self.browser = await self.playwright.chromium.connect(ws_endpoint='ws://localhost:3000/playwright')
+        else:
+            self.browser = await self.playwright.chromium.launch(
+                    args=self.args, **self.options
+            )
         context = await self._create_context(set_useragent=True)
         page = await context.new_page()
         if not self.device_mobile:
