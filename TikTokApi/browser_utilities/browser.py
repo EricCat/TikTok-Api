@@ -78,7 +78,7 @@ class browser(BrowserInterface):
         self._thread_locals.playwright = await async_playwright().start()
         self.playwright = self._thread_locals.playwright
         if kwargs.get("browser_instance_remote", True):
-            self.browser = await self.playwright.chromium.connect(ws_endpoint='ws://localhost:3000/playwright?headless=true&stealth&--window-size=2560,1440')
+            self.browser = await self.playwright.chromium.connect(ws_endpoint='ws://localhost:3000/playwright?stealth')
         else:
             self.browser = await self.playwright.chromium.launch(
                     args=self.args, **self.options
